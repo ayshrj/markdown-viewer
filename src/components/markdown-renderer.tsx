@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import type { MouseEvent } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -21,6 +22,7 @@ import { MermaidBlock } from "@/components/mermaid-block";
 
 type MarkdownRendererProps = {
   content: string;
+  onLinkClick?: (href: string) => boolean;
 };
 
 const sanitizeSchema: SanitizeOptions = {
@@ -73,12 +75,36 @@ const sanitizeSchema: SanitizeOptions = {
   },
 };
 
-const components: Components = {
-  a: ({ children, className, href, rel, target, title }) => (
-    <a className={className} href={href} rel={rel} target={target} title={title}>
-      {children}
-    </a>
-  ),
+function createComponents(
+  onLinkClick: MarkdownRendererProps["onLinkClick"]
+): Components {
+  return {
+    a: ({ children, className, href, rel, target, title }) => {
+      function handleClick(event: MouseEvent<HTMLAnchorElement>) {
+        if (!href || !onLinkClick) {
+          return;
+        }
+
+        const handled = onLinkClick(href);
+
+        if (handled) {
+          event.preventDefault();
+        }
+      }
+
+      return (
+        <a
+          className={className}
+          href={href}
+          onClick={handleClick}
+          rel={rel}
+          target={target}
+          title={title}
+        >
+          {children}
+        </a>
+      );
+    },
   blockquote: ({ children }) => <blockquote>{children}</blockquote>,
   code: ({ children, className }) => {
     const code = String(children).replace(/\n$/, "");
@@ -131,12 +157,16 @@ const components: Components = {
       <table>{children}</table>
     </div>
   ),
-};
+  };
+}
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  content,
+  onLinkClick,
+}: MarkdownRendererProps) {
   return (
     <ReactMarkdown
-      components={components}
+      components={createComponents(onLinkClick)}
       rehypePlugins={[
         rehypeRaw,
         [rehypeSanitize, sanitizeSchema],

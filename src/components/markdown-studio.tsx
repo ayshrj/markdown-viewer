@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChangeEvent, PointerEvent } from "react";
+import type { ChangeEvent, MouseEvent, PointerEvent } from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -58,6 +58,7 @@ const MAX_SPLIT_PERCENT = 85;
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const { setTheme, theme } = useTheme();
@@ -209,6 +210,10 @@ export function MarkdownStudio() {
       window.localStorage.setItem(STORAGE_KEYS.tocOpen, String(tocOpen));
     }
   }, [mounted, tocOpen]);
+
+  useEffect(() => {
+    previewScrollRef.current?.scrollTo({ top: 0 });
+  }, [activeDocumentId]);
 
   useEffect(() => {
     if (!toast) {
@@ -400,6 +405,62 @@ export function MarkdownStudio() {
     setToast("Removed document");
   }
 
+  function openLinkedDocument(href: string): boolean {
+    const linkedFilename = getLinkedMarkdownFilename(href);
+
+    if (!linkedFilename) {
+      return false;
+    }
+
+    const linkedDocument = documents.find((document) =>
+      documentMatchesFilename(document, linkedFilename)
+    );
+
+    if (!linkedDocument) {
+      setToast(`Open ${linkedFilename} first`);
+      return true;
+    }
+
+    setActiveDocumentId(linkedDocument.id);
+
+    const hash = getLinkHash(href);
+
+    if (hash) {
+      window.setTimeout(() => {
+        document
+          .getElementById(hash)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+
+    setToast(`Opened ${linkedDocument.filename ?? linkedFilename}`);
+    return true;
+  }
+
+  function handleTocClick(
+    event: MouseEvent<HTMLAnchorElement>,
+    headingId: string
+  ) {
+    const scrollContainer = previewScrollRef.current;
+    const target = scrollContainer?.querySelector<HTMLElement>(
+      `#${CSS.escape(headingId)}`
+    );
+
+    if (!scrollContainer || !target) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const containerTop = scrollContainer.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top;
+
+    scrollContainer.scrollTo({
+      top: targetTop - containerTop + scrollContainer.scrollTop - 16,
+      behavior: "smooth",
+    });
+  }
+
   function downloadMarkdown() {
     const blob = new Blob([source], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -461,8 +522,8 @@ export function MarkdownStudio() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6">
-      <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[1180px] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:min-h-[calc(100vh-3rem)]">
+    <main className="h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6">
+      <section className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1180px] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]">
         <header className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2.5">
           <h1 className="mr-auto text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
             Markdown
@@ -583,6 +644,7 @@ export function MarkdownStudio() {
                     <a
                       key={`${heading.id}-${heading.depth}-${heading.text}`}
                       href={`#${heading.id}`}
+                      onClick={(event) => handleTocClick(event, heading.id)}
                       className={cx("toc-item", `toc-depth-${heading.depth}`)}
                     >
                       {heading.text}
@@ -669,13 +731,17 @@ export function MarkdownStudio() {
                 {previewPending ? "Previewing..." : "Preview"}
               </div>
               <article
+                ref={previewScrollRef}
                 className={cx(
                   "markdown-body flex-1 overflow-y-auto p-6",
                   viewMode === "read" && "mx-auto w-full max-w-[780px] sm:p-10"
                 )}
               >
                 {markdownDocument.content.trim() ? (
-                  <MarkdownRenderer content={markdownDocument.content} />
+                  <MarkdownRenderer
+                    content={markdownDocument.content}
+                    onLinkClick={openLinkedDocument}
+                  />
                 ) : (
                   <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
                     <div>
@@ -787,6 +853,72 @@ function getDocumentLabel(document: SessionDocument, index: number): string {
   }
 
   return `Draft ${index + 1}`;
+}
+
+function documentMatchesFilename(
+  document: SessionDocument,
+  linkedFilename: string
+): boolean {
+  if (!document.filename) {
+    return false;
+  }
+
+  return normalizeFilename(document.filename) === normalizeFilename(linkedFilename);
+}
+
+function getLinkedMarkdownFilename(href: string): string | null {
+  if (
+    href.startsWith("#") ||
+    href.startsWith("mailto:") ||
+    href.startsWith("tel:") ||
+    /^[a-z][a-z\d+.-]*:/i.test(href) ||
+    href.startsWith("//")
+  ) {
+    return null;
+  }
+
+  const withoutHash = href.split("#", 1)[0];
+  const withoutQuery = withoutHash.split("?", 1)[0];
+  const normalizedPath = withoutQuery.replace(/\\/g, "/");
+  const filename = normalizedPath.split("/").filter(Boolean).at(-1);
+
+  if (!filename || !isAcceptedMarkdownPath(filename)) {
+    return null;
+  }
+
+  return decodePathSegment(filename);
+}
+
+function getLinkHash(href: string): string | null {
+  const hash = href.split("#")[1];
+
+  if (!hash) {
+    return null;
+  }
+
+  return decodePathSegment(hash);
+}
+
+function normalizeFilename(value: string): string {
+  return decodePathSegment(value.split("/").filter(Boolean).at(-1) ?? value)
+    .trim()
+    .toLowerCase();
+}
+
+function decodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isAcceptedMarkdownPath(path: string): boolean {
+  const normalizedPath = path.toLowerCase();
+
+  return ACCEPTED_EXTENSIONS.some((extension) =>
+    normalizedPath.endsWith(extension)
+  );
 }
 
 function parseStoredDocuments(value: string | null): SessionDocument[] {
