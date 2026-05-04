@@ -66,13 +66,13 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
   }
 
   return (
-    <figure className="code-block overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--code-bg)] text-[var(--code-text)]">
-      <figcaption className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs uppercase tracking-[0.22em] text-white/68">
+    <figure className="code-block overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--code-bg)] text-[var(--code-text)]">
+      <figcaption className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
         <span>{label}</span>
         <button
           type="button"
           onClick={copyCode}
-          className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/12 px-3 text-[0.7rem] font-black transition hover:bg-white/10"
+          className="inline-flex min-h-8 items-center gap-2 rounded-md border border-[var(--line-strong)] px-2.5 text-[0.7rem] font-bold transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
         >
           {copied ? <Check aria-hidden size={14} /> : <Copy aria-hidden size={14} />}
           {copied ? "Copied" : "Copy"}
@@ -86,7 +86,7 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
         </pre>
       )}
       {error ? (
-        <p className="border-t border-white/10 px-4 py-2 text-xs text-white/58">
+        <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
           Unsupported highlighter path, showing plain text.
         </p>
       ) : null}

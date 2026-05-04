@@ -7,6 +7,7 @@ import {
   List,
   Copy,
   Download,
+  FilePlus,
   FileText,
   Monitor,
   Moon,
@@ -24,10 +25,19 @@ import { useScreenSize } from "@/hooks/use-screen-size";
 
 type ViewMode = "split" | "edit" | "read";
 
+type SessionDocument = {
+  id: string;
+  source: string;
+  filename?: string;
+  updatedAt: number;
+};
+
 const STORAGE_KEYS = {
   source: "markdown-reader:source",
   filename: "markdown-reader:filename",
   updatedAt: "markdown-reader:updated-at",
+  documents: "markdown-reader:documents",
+  activeDocumentId: "markdown-reader:active-document-id",
   viewMode: "markdown-reader:view-mode",
   themeMode: "markdown-reader:theme-mode",
   splitPercent: "markdown-reader:split-percent",
@@ -48,16 +58,24 @@ const MAX_SPLIT_PERCENT = 85;
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const dragDepthRef = useRef(0);
+  const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const { setTheme, theme } = useTheme();
-  const [source, setSource] = useState(SAMPLE_MARKDOWN);
-  const [filename, setFilename] = useState<string | undefined>();
-  const [updatedAt, setUpdatedAt] = useState(0);
+  const [documents, setDocuments] = useState<SessionDocument[]>(() => [
+    createDocument(SAMPLE_MARKDOWN, "Sample.md", "sample", 0),
+  ]);
+  const [activeDocumentId, setActiveDocumentId] = useState("sample");
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [splitPercent, setSplitPercent] = useState(50);
   const [tocOpen, setTocOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const activeDocument = getActiveDocument(documents, activeDocumentId);
+  const source = activeDocument.source;
+  const filename = activeDocument.filename;
+  const updatedAt = activeDocument.updatedAt;
   const deferredSource = useDeferredValue(source);
   const markdownDocument = parseMarkdownDocument(
     deferredSource,
@@ -76,7 +94,7 @@ export function MarkdownStudio() {
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
 
-  const { breakpoint, screenHeight } = useScreenSize();
+  const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(
     () => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint),
     [breakpoint]
@@ -86,6 +104,12 @@ export function MarkdownStudio() {
   // server-rendered shell stays deterministic.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    const storedDocuments = parseStoredDocuments(
+      window.localStorage.getItem(STORAGE_KEYS.documents)
+    );
+    const storedActiveDocumentId = window.localStorage.getItem(
+      STORAGE_KEYS.activeDocumentId
+    );
     const storedSource = window.localStorage.getItem(STORAGE_KEYS.source);
     const storedFilename = window.localStorage.getItem(STORAGE_KEYS.filename);
     const storedUpdatedAt = Number(
@@ -98,18 +122,31 @@ export function MarkdownStudio() {
     );
     const storedTocOpen = window.localStorage.getItem(STORAGE_KEYS.tocOpen);
 
-    if (storedSource !== null) {
-      setSource(storedSource);
-    }
+    if (storedDocuments.length) {
+      setDocuments(storedDocuments);
+      setActiveDocumentId(
+        storedActiveDocumentId &&
+          storedDocuments.some(
+            (document) => document.id === storedActiveDocumentId
+          )
+          ? storedActiveDocumentId
+          : storedDocuments[0].id
+      );
+    } else if (storedSource !== null) {
+      const migratedDocument = createDocument(
+        storedSource,
+        storedFilename || undefined,
+        "local-draft",
+        Number.isFinite(storedUpdatedAt) && storedUpdatedAt > 0
+          ? storedUpdatedAt
+          : Date.now()
+      );
 
-    if (storedFilename) {
-      setFilename(storedFilename);
-    }
-
-    if (Number.isFinite(storedUpdatedAt) && storedUpdatedAt > 0) {
-      setUpdatedAt(storedUpdatedAt);
+      setDocuments([migratedDocument]);
+      setActiveDocumentId(migratedDocument.id);
     } else {
-      setUpdatedAt(Date.now());
+      setDocuments([createDocument(SAMPLE_MARKDOWN, "Sample.md", "sample", 0)]);
+      setActiveDocumentId("sample");
     }
 
     if (isViewMode(storedViewMode)) {
@@ -137,6 +174,11 @@ export function MarkdownStudio() {
       return;
     }
 
+    window.localStorage.setItem(
+      STORAGE_KEYS.documents,
+      JSON.stringify(documents)
+    );
+    window.localStorage.setItem(STORAGE_KEYS.activeDocumentId, activeDocumentId);
     window.localStorage.setItem(STORAGE_KEYS.source, source);
     window.localStorage.setItem(STORAGE_KEYS.updatedAt, String(updatedAt));
 
@@ -145,7 +187,7 @@ export function MarkdownStudio() {
     } else {
       window.localStorage.removeItem(STORAGE_KEYS.filename);
     }
-  }, [filename, mounted, source, updatedAt]);
+  }, [activeDocumentId, documents, filename, mounted, source, updatedAt]);
 
   useEffect(() => {
     if (mounted) {
@@ -179,32 +221,121 @@ export function MarkdownStudio() {
   }, [toast]);
 
   function updateSource(nextSource: string) {
-    setSource(nextSource);
-    setUpdatedAt(Date.now());
+    const nextUpdatedAt = Date.now();
+
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((document) =>
+        document.id === activeDocumentId
+          ? { ...document, source: nextSource, updatedAt: nextUpdatedAt }
+          : document
+      )
+    );
   }
 
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
     updateSource(event.target.value);
   }
 
-  async function loadFile(file: File) {
-    if (!isAcceptedFile(file)) {
+  async function loadFiles(files: File[]) {
+    const acceptedFiles = files.filter(isAcceptedFile);
+    const rejectedCount = files.length - acceptedFiles.length;
+
+    if (!acceptedFiles.length) {
       setToast("Use a .md, .markdown, .mdx, or .txt file.");
       return;
     }
 
-    const text = await file.text();
+    const loadedDocuments = await Promise.all(
+      acceptedFiles.map(async (file) =>
+        createDocument(await file.text(), file.name)
+      )
+    );
 
-    setFilename(file.name);
-    updateSource(text);
-    setToast(`Loaded ${file.name}`);
+    setDocuments((currentDocuments) => [...currentDocuments, ...loadedDocuments]);
+    setActiveDocumentId(loadedDocuments[0].id);
+    setToast(
+      rejectedCount > 0
+        ? `Loaded ${loadedDocuments.length}, skipped ${rejectedCount}`
+        : loadedDocuments.length === 1
+        ? `Loaded ${loadedDocuments[0].filename}`
+        : `Loaded ${loadedDocuments.length} documents`
+    );
   }
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  useEffect(() => {
+    loadFilesRef.current = loadFiles;
+  });
 
-    if (file) {
-      void loadFile(file);
+  useEffect(() => {
+    function handleWindowDragEnter(event: DragEvent) {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepthRef.current += 1;
+      setIsDraggingFiles(true);
+    }
+
+    function handleWindowDragOver(event: DragEvent) {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+    }
+
+    function handleWindowDragLeave(event: DragEvent) {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+
+      if (dragDepthRef.current === 0) {
+        setIsDraggingFiles(false);
+      }
+    }
+
+    function handleWindowDrop(event: DragEvent) {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+
+      const files = Array.from(event.dataTransfer?.files ?? []);
+
+      if (files.length) {
+        void loadFilesRef.current(files);
+      }
+    }
+
+    window.addEventListener("dragenter", handleWindowDragEnter);
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("dragleave", handleWindowDragLeave);
+    window.addEventListener("drop", handleWindowDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleWindowDragEnter);
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("dragleave", handleWindowDragLeave);
+      window.removeEventListener("drop", handleWindowDrop);
+    };
+  }, []);
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    if (files.length) {
+      void loadFiles(files);
     }
 
     event.target.value = "";
@@ -225,15 +356,48 @@ export function MarkdownStudio() {
   }
 
   function loadSample() {
-    setFilename(undefined);
-    updateSource(SAMPLE_MARKDOWN);
+    const sampleDocument = createDocument(SAMPLE_MARKDOWN, "Sample.md");
+
+    setDocuments((currentDocuments) => [...currentDocuments, sampleDocument]);
+    setActiveDocumentId(sampleDocument.id);
     setToast("Loaded sample");
   }
 
   function clearDocument() {
-    setFilename(undefined);
     updateSource("");
-    setToast("Cleared");
+    setToast("Cleared current document");
+  }
+
+  function createBlankDocument() {
+    const document = createDocument("", "Untitled.md");
+
+    setDocuments((currentDocuments) => [...currentDocuments, document]);
+    setActiveDocumentId(document.id);
+    setViewMode("edit");
+    setToast("New document");
+  }
+
+  function removeDocument(documentId: string) {
+    if (documents.length === 1) {
+      const replacement = createDocument("", "Untitled.md");
+
+      setDocuments([replacement]);
+      setActiveDocumentId(replacement.id);
+      setToast("Removed document");
+      return;
+    }
+
+    const nextDocuments = documents.filter(
+      (document) => document.id !== documentId
+    );
+
+    setDocuments(nextDocuments);
+
+    if (documentId === activeDocumentId) {
+      setActiveDocumentId(nextDocuments[0].id);
+    }
+
+    setToast("Removed document");
   }
 
   function downloadMarkdown() {
@@ -330,12 +494,18 @@ export function MarkdownStudio() {
             className="sr-only"
             type="file"
             accept={ACCEPTED_UPLOADS}
+            multiple
             onChange={handleFileChange}
           />
           <ToolbarButton
             icon={Upload}
             label="Upload"
             onClick={() => fileInputRef.current?.click()}
+          />
+          <ToolbarButton
+            icon={FilePlus}
+            label="New"
+            onClick={createBlankDocument}
           />
           <ToolbarButton
             icon={Download}
@@ -355,6 +525,46 @@ export function MarkdownStudio() {
             onClick={cycleTheme}
           />
         </header>
+
+        <div className="document-strip border-b border-[var(--line)] bg-[var(--panel)] px-3 py-2">
+          <div
+            className="flex gap-1.5 overflow-x-auto"
+            aria-label="Open markdown documents"
+          >
+            {documents.map((document, index) => (
+              <div
+                key={document.id}
+                className={cx(
+                  "document-tab group flex max-w-[220px] shrink-0 items-center rounded-md border text-xs transition",
+                  document.id === activeDocumentId
+                    ? "border-[var(--line-strong)] bg-[var(--panel-muted)] text-[var(--text)]"
+                    : "border-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-[var(--panel-muted)] hover:text-[var(--text)]"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveDocumentId(document.id)}
+                  className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
+                  title={getDocumentLabel(document, index)}
+                  aria-current={
+                    document.id === activeDocumentId ? "page" : undefined
+                  }
+                >
+                  {getDocumentLabel(document, index)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeDocument(document.id)}
+                  className="rounded px-1.5 py-1.5 text-[var(--muted-soft)] opacity-80 transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100"
+                  aria-label={`Close ${getDocumentLabel(document, index)}`}
+                  title="Close document"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div
           ref={splitContainerRef}
@@ -491,6 +701,7 @@ export function MarkdownStudio() {
           <span>{stats.characters.toLocaleString()} chars</span>
           <span>{lineCount.toLocaleString()} lines</span>
           <span>~{stats.readingMinutes} min read</span>
+          <span>{documents.length.toLocaleString()} docs open</span>
           <span className="min-w-0 truncate">{filename ?? "Local draft"}</span>
         </footer>
 
@@ -500,6 +711,24 @@ export function MarkdownStudio() {
           </div>
         ) : null}
       </section>
+
+      {isDraggingFiles ? (
+        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center border-[6px] border-dashed border-[var(--accent)] bg-[var(--bg)]/70 p-6 backdrop-blur-[2px]">
+          <div className="rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] px-5 py-4 text-center shadow-sm">
+            <Upload
+              aria-hidden
+              className="mx-auto mb-2 text-[var(--muted)]"
+              size={24}
+            />
+            <p className="text-sm font-bold text-[var(--text)]">
+              Drop markdown files to add them
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              .md, .markdown, .mdx, and .txt files are accepted.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -525,10 +754,96 @@ function ToolbarButton({
   );
 }
 
+function createDocument(
+  source: string,
+  filename?: string,
+  stableId?: string,
+  updatedAt = Date.now()
+): SessionDocument {
+  return {
+    id:
+      stableId ??
+      `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
+    source,
+    filename,
+    updatedAt,
+  };
+}
+
+function getActiveDocument(
+  documents: SessionDocument[],
+  activeDocumentId: string
+): SessionDocument {
+  return (
+    documents.find((document) => document.id === activeDocumentId) ??
+    documents[0] ??
+    createDocument("", "Untitled.md", "fallback")
+  );
+}
+
+function getDocumentLabel(document: SessionDocument, index: number): string {
+  if (document.filename?.trim()) {
+    return document.filename.trim();
+  }
+
+  return `Draft ${index + 1}`;
+}
+
+function parseStoredDocuments(value: string | null): SessionDocument[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item): SessionDocument | null => {
+        if (!isStoredDocument(item)) {
+          return null;
+        }
+
+        return {
+          id: item.id,
+          source: item.source,
+          filename: item.filename,
+          updatedAt: item.updatedAt,
+        };
+      })
+      .filter((document): document is SessionDocument => document !== null);
+  } catch {
+    return [];
+  }
+}
+
+function isStoredDocument(value: unknown): value is SessionDocument {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<SessionDocument>;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.source === "string" &&
+    (candidate.filename === undefined || typeof candidate.filename === "string") &&
+    typeof candidate.updatedAt === "number" &&
+    Number.isFinite(candidate.updatedAt)
+  );
+}
+
 function isAcceptedFile(file: File): boolean {
   const name = file.name.toLowerCase();
 
   return ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
+function hasDraggedFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
 function isThemeMode(value: unknown): value is ThemeMode {
