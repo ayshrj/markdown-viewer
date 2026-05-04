@@ -58,6 +58,7 @@ const MAX_SPLIT_PERCENT = 85;
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const sourcePaneRef = useRef<HTMLElement>(null);
   const previewScrollRef = useRef<HTMLElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
@@ -214,6 +215,40 @@ export function MarkdownStudio() {
   useEffect(() => {
     previewScrollRef.current?.scrollTo({ top: 0 });
   }, [activeDocumentId]);
+
+  useEffect(() => {
+    if (!showPreview) {
+      return;
+    }
+
+    function handleWindowWheel(event: WheelEvent) {
+      const previewScroll = previewScrollRef.current;
+
+      if (
+        !previewScroll ||
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isInsideElement(event.target, sourcePaneRef.current) ||
+        isEditableWheelTarget(event.target) ||
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      previewScroll.scrollBy({
+        top: normalizeWheelDelta(event),
+        behavior: "auto",
+      });
+    }
+
+    window.addEventListener("wheel", handleWindowWheel, { passive: false });
+
+    return () => {
+      window.removeEventListener("wheel", handleWindowWheel);
+    };
+  }, [showPreview]);
 
   useEffect(() => {
     if (!toast) {
@@ -659,7 +694,8 @@ export function MarkdownStudio() {
 
           {showEditor ? (
             <section
-              className="flex min-h-[420px] min-w-0 flex-col"
+              ref={sourcePaneRef}
+              className="flex min-h-0 min-w-0 flex-col"
               style={
                 viewMode === "split" && !isSmallScreen
                   ? {
@@ -678,7 +714,7 @@ export function MarkdownStudio() {
                 spellCheck={false}
                 aria-label="Markdown source"
                 placeholder="Start writing Markdown here..."
-                className="min-h-[420px] flex-1 resize-none border-0 bg-transparent p-5 font-mono text-[0.82rem] leading-7 text-[var(--text)] outline-none placeholder:text-[var(--muted-soft)]"
+                className="min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent p-5 font-mono text-[0.82rem] leading-7 text-[var(--text)] outline-none placeholder:text-[var(--muted-soft)]"
               />
             </section>
           ) : null}
@@ -734,7 +770,7 @@ export function MarkdownStudio() {
                 ref={previewScrollRef}
                 className={cx(
                   "markdown-body flex-1 overflow-y-auto p-6",
-                  viewMode === "read" && "mx-auto w-full max-w-[780px] sm:p-10"
+                  viewMode === "read" && "w-full sm:p-10"
                 )}
               >
                 {markdownDocument.content.trim() ? (
@@ -984,6 +1020,37 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 function isViewMode(value: unknown): value is ViewMode {
   return value === "split" || value === "edit" || value === "read";
+}
+
+function normalizeWheelDelta(event: WheelEvent): number {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return event.deltaY * 16;
+  }
+
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return event.deltaY * window.innerHeight;
+  }
+
+  return event.deltaY;
+}
+
+function isEditableWheelTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest("textarea, input, select, [contenteditable='true']")
+  );
+}
+
+function isInsideElement(
+  target: EventTarget | null,
+  element: Element | null
+): boolean {
+  return Boolean(
+    element && target instanceof Node && element.contains(target)
+  );
 }
 
 function clampSplitPercent(value: number) {
