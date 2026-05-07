@@ -1,6 +1,11 @@
 "use client";
 
-import type { ChangeEvent, MouseEvent, PointerEvent } from "react";
+import type {
+  ChangeEvent,
+  DragEvent as ReactDragEvent,
+  MouseEvent,
+  PointerEvent,
+} from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -55,6 +60,7 @@ const VIEW_MODES: Array<{ value: ViewMode; label: string }> = [
 const THEME_VALUES: ThemeMode[] = ["system", "light", "dark"];
 const MIN_SPLIT_PERCENT = 15;
 const MAX_SPLIT_PERCENT = 85;
+const DOCUMENT_DRAG_TYPE = "application/x-mdlens-document-id";
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +79,12 @@ export function MarkdownStudio() {
   const [tocOpen, setTocOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(
+    null
+  );
+  const [dropTargetDocumentId, setDropTargetDocumentId] = useState<
+    string | null
+  >(null);
   const [toast, setToast] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const activeDocument = getActiveDocument(documents, activeDocumentId);
@@ -416,7 +428,7 @@ export function MarkdownStudio() {
   }
 
   function createBlankDocument() {
-    const document = createDocument("", "Untitled.md");
+    const document = createDocument("", getNextUntitledFilename(documents));
 
     setDocuments((currentDocuments) => [...currentDocuments, document]);
     setActiveDocumentId(document.id);
@@ -426,7 +438,7 @@ export function MarkdownStudio() {
 
   function removeDocument(documentId: string) {
     if (documents.length === 1) {
-      const replacement = createDocument("", "Untitled.md");
+      const replacement = createDocument("", "Untitled 1.md");
 
       setDocuments([replacement]);
       setActiveDocumentId(replacement.id);
@@ -445,6 +457,61 @@ export function MarkdownStudio() {
     }
 
     setToast("Removed document");
+  }
+
+  function handleDocumentDragStart(
+    event: ReactDragEvent<HTMLDivElement>,
+    documentId: string
+  ) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, documentId);
+    setDraggedDocumentId(documentId);
+    setDropTargetDocumentId(documentId);
+  }
+
+  function handleDocumentDragOver(
+    event: ReactDragEvent<HTMLDivElement>,
+    targetDocumentId: string
+  ) {
+    if (!isDocumentTabDrag(event) || !draggedDocumentId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+
+    if (targetDocumentId !== dropTargetDocumentId) {
+      setDropTargetDocumentId(targetDocumentId);
+    }
+  }
+
+  function handleDocumentDrop(
+    event: ReactDragEvent<HTMLDivElement>,
+    targetDocumentId: string
+  ) {
+    if (!isDocumentTabDrag(event)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const sourceDocumentId =
+      event.dataTransfer.getData(DOCUMENT_DRAG_TYPE) || draggedDocumentId;
+
+    if (!sourceDocumentId || sourceDocumentId === targetDocumentId) {
+      clearDocumentDragState();
+      return;
+    }
+
+    setDocuments((currentDocuments) =>
+      reorderDocuments(currentDocuments, sourceDocumentId, targetDocumentId)
+    );
+    clearDocumentDragState();
+  }
+
+  function clearDocumentDragState() {
+    setDraggedDocumentId(null);
+    setDropTargetDocumentId(null);
   }
 
   function openLinkedDocument(href: string): boolean {
@@ -652,11 +719,24 @@ export function MarkdownStudio() {
             {documents.map((document, index) => (
               <div
                 key={document.id}
+                draggable
+                onDragEnd={clearDocumentDragState}
+                onDragOver={(event) =>
+                  handleDocumentDragOver(event, document.id)
+                }
+                onDragStart={(event) =>
+                  handleDocumentDragStart(event, document.id)
+                }
+                onDrop={(event) => handleDocumentDrop(event, document.id)}
                 className={cx(
-                  "document-tab group flex max-w-[220px] shrink-0 items-center rounded-md border text-xs transition",
+                  "document-tab group flex max-w-[220px] shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
                   document.id === activeDocumentId
                     ? "border-[var(--line-strong)] bg-[var(--panel-muted)] text-[var(--text)]"
-                    : "border-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-[var(--panel-muted)] hover:text-[var(--text)]"
+                    : "border-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-[var(--panel-muted)] hover:text-[var(--text)]",
+                  document.id === draggedDocumentId && "opacity-50",
+                  document.id === dropTargetDocumentId &&
+                    document.id !== draggedDocumentId &&
+                    "border-[var(--accent)] bg-[var(--accent-soft)]"
                 )}
               >
                 <button
@@ -673,6 +753,7 @@ export function MarkdownStudio() {
                 <button
                   type="button"
                   onClick={() => removeDocument(document.id)}
+                  draggable={false}
                   className="rounded px-1.5 py-1.5 text-[var(--muted-soft)] opacity-80 transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100"
                   aria-label={`Close ${getDocumentLabel(document, index)}`}
                   title="Close document"
@@ -900,7 +981,7 @@ function getActiveDocument(
   return (
     documents.find((document) => document.id === activeDocumentId) ??
     documents[0] ??
-    createDocument("", "Untitled.md", "fallback")
+    createDocument("", "Untitled 1.md", "fallback")
   );
 }
 
@@ -910,6 +991,56 @@ function getDocumentLabel(document: SessionDocument, index: number): string {
   }
 
   return `Draft ${index + 1}`;
+}
+
+function getNextUntitledFilename(documents: SessionDocument[]): string {
+  const usedNumbers = new Set<number>();
+
+  for (const document of documents) {
+    const match = /^Untitled(?:\s+(\d+))?\.md$/i.exec(
+      document.filename?.trim() ?? ""
+    );
+
+    if (match) {
+      usedNumbers.add(match[1] ? Number(match[1]) : 1);
+    }
+  }
+
+  let nextNumber = 1;
+
+  while (usedNumbers.has(nextNumber)) {
+    nextNumber += 1;
+  }
+
+  return `Untitled ${nextNumber}.md`;
+}
+
+function reorderDocuments(
+  documents: SessionDocument[],
+  sourceDocumentId: string,
+  targetDocumentId: string
+): SessionDocument[] {
+  const sourceIndex = documents.findIndex(
+    (document) => document.id === sourceDocumentId
+  );
+  const targetIndex = documents.findIndex(
+    (document) => document.id === targetDocumentId
+  );
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return documents;
+  }
+
+  const nextDocuments = [...documents];
+  const [movedDocument] = nextDocuments.splice(sourceIndex, 1);
+
+  nextDocuments.splice(targetIndex, 0, movedDocument);
+
+  return nextDocuments;
+}
+
+function isDocumentTabDrag(event: ReactDragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes(DOCUMENT_DRAG_TYPE);
 }
 
 function documentMatchesFilename(
