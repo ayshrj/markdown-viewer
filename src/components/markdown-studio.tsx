@@ -898,7 +898,8 @@ export function MarkdownStudio() {
           )}
 
           {zenMode && (
-            <div className="flex items-center justify-end border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
+            <div className="flex items-center justify-end gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
+              <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
               <Button
                 type="button"
                 variant="ghost"
