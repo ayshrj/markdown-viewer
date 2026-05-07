@@ -45,6 +45,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
+import { SITE_NAME } from "@/lib/site";
 import type { ThemeMode } from "@/types/markdown";
 import { useScreenSize } from "@/hooks/use-screen-size";
 
@@ -303,6 +304,10 @@ export function MarkdownStudio() {
       window.localStorage.removeItem(STORAGE_KEYS.filename);
     }
   }, [activeDocumentId, documents, filename, mounted, source, updatedAt]);
+  useEffect(() => {
+    const trimmedName = filename?.trim();
+    document.title = trimmedName ? `${trimmedName} – ${SITE_NAME}` : SITE_NAME;
+  }, [activeDocumentId, filename]);
 
   useEffect(() => {
     if (mounted) window.localStorage.setItem(STORAGE_KEYS.viewMode, viewMode);
