@@ -71,6 +71,7 @@ export function MarkdownStudio() {
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [splitPercent, setSplitPercent] = useState(50);
   const [tocOpen, setTocOpen] = useState(false);
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -80,10 +81,9 @@ export function MarkdownStudio() {
   const filename = activeDocument.filename;
   const updatedAt = activeDocument.updatedAt;
   const deferredSource = useDeferredValue(source);
-  const markdownDocument = parseMarkdownDocument(
-    deferredSource,
-    filename,
-    updatedAt
+  const markdownDocument = useMemo(
+    () => parseMarkdownDocument(deferredSource, filename, updatedAt),
+    [deferredSource, filename, updatedAt]
   );
   const stats = getDocumentStats(
     markdownDocument.content,
@@ -96,6 +96,11 @@ export function MarkdownStudio() {
   const showEditor = viewMode === "split" || viewMode === "edit";
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
+  const activeTocHeadingId = markdownDocument.headings.some(
+    (heading) => heading.id === activeHeadingId
+  )
+    ? activeHeadingId
+    : markdownDocument.headings[0]?.id ?? null;
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(
@@ -219,6 +224,35 @@ export function MarkdownStudio() {
   useEffect(() => {
     previewScrollRef.current?.scrollTo({ top: 0 });
   }, [activeDocumentId]);
+
+  useEffect(() => {
+    const scrollContainer = previewScrollRef.current;
+
+    if (!showPreview || !scrollContainer || !markdownDocument.headings.length) {
+      return;
+    }
+
+    const activeScrollContainer = scrollContainer;
+
+    function updateActiveHeading() {
+      const nextActiveHeadingId = getActiveHeadingId(
+        activeScrollContainer,
+        markdownDocument.headings.map((heading) => heading.id)
+      );
+
+      setActiveHeadingId(nextActiveHeadingId);
+    }
+
+    const animationFrame = window.requestAnimationFrame(updateActiveHeading);
+    activeScrollContainer.addEventListener("scroll", updateActiveHeading, {
+      passive: true,
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      activeScrollContainer.removeEventListener("scroll", updateActiveHeading);
+    };
+  }, [markdownDocument.headings, showPreview]);
 
   useEffect(() => {
     if (!showPreview) {
@@ -702,7 +736,16 @@ export function MarkdownStudio() {
                       key={`${heading.id}-${heading.depth}-${heading.text}`}
                       href={`#${heading.id}`}
                       onClick={(event) => handleTocClick(event, heading.id)}
-                      className={cx("toc-item", `toc-depth-${heading.depth}`)}
+                      aria-current={
+                        heading.id === activeTocHeadingId
+                          ? "location"
+                          : undefined
+                      }
+                      className={cx(
+                        "toc-item",
+                        `toc-depth-${heading.depth}`,
+                        heading.id === activeTocHeadingId && "is-active"
+                      )}
                     >
                       {heading.text}
                     </a>
@@ -1044,6 +1087,36 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 function isViewMode(value: unknown): value is ViewMode {
   return value === "split" || value === "edit" || value === "read";
+}
+
+function getActiveHeadingId(
+  scrollContainer: HTMLElement,
+  headingIds: string[]
+): string | null {
+  let activeHeadingId = headingIds[0] ?? null;
+  const containerTop = scrollContainer.getBoundingClientRect().top;
+  const activationOffset = 24;
+
+  for (const headingId of headingIds) {
+    const heading = scrollContainer.querySelector<HTMLElement>(
+      `#${CSS.escape(headingId)}`
+    );
+
+    if (!heading) {
+      continue;
+    }
+
+    const headingTop = heading.getBoundingClientRect().top - containerTop;
+
+    if (headingTop <= activationOffset) {
+      activeHeadingId = headingId;
+      continue;
+    }
+
+    break;
+  }
+
+  return activeHeadingId;
 }
 
 function normalizeWheelDelta(event: WheelEvent): number {
