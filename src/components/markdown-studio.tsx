@@ -1367,6 +1367,13 @@ export function MarkdownStudio() {
         getSpeechSelectionFromRange(preview, range) ?? getSpeechSelectionFromSelectedText(preview, selectedText);
       const position = getSelectionPopoverPosition(range);
 
+      if (!speechSelection) {
+        console.log("Preview selection could not map to readable TTS text:", {
+          selectedText,
+          readableText: collectSpeechTextSegments(preview).text,
+        });
+      }
+
       setPreviewReadPopover({
         text: speechSelection?.text ?? selectedText,
         start: speechSelection?.start ?? null,
@@ -2866,13 +2873,7 @@ function buildWhitespaceFlexiblePattern(value: string): string {
 }
 
 function getTextNodeSelectionOverlap(range: Range, node: Text): { start: number; end: number } | null {
-  const nodeRange = document.createRange();
-  nodeRange.selectNodeContents(node);
-
-  const selectionStartsBeforeNodeEnds = range.compareBoundaryPoints(Range.START_TO_END, nodeRange) < 0;
-  const selectionEndsAfterNodeStarts = range.compareBoundaryPoints(Range.END_TO_START, nodeRange) > 0;
-
-  if (!selectionStartsBeforeNodeEnds || !selectionEndsAfterNodeStarts) return null;
+  if (!range.intersectsNode(node)) return null;
 
   const nodeLength = node.textContent?.length ?? 0;
   const start = range.startContainer === node ? range.startOffset : 0;
