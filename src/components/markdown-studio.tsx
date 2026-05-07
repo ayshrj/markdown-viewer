@@ -68,6 +68,7 @@ type FindMatch = {
 };
 
 type TtsPlaybackState = "idle" | "playing" | "paused";
+type TtsHighlightMode = "sentence" | "word";
 
 type SpeechTextNodeSegment = {
   node: Text;
@@ -113,7 +114,49 @@ const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 22;
 const FONT_SIZE_DEFAULT = 15;
 const FIND_DEBOUNCE_MS = 180;
-const TTS_HIGHLIGHT_NAME = "mdlens-tts-word";
+const TTS_HIGHLIGHT_NAME = "mdlens-tts-current";
+const TTS_READABLE_BLOCK_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,summary,dt,dd";
+const TTS_SKIP_SELECTOR = [
+  "script",
+  "style",
+  "noscript",
+  "template",
+  "svg",
+  "canvas",
+  "button",
+  "input",
+  "textarea",
+  "select",
+  "option",
+  "pre",
+  "code",
+  "kbd",
+  "samp",
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "th",
+  "td",
+  "math",
+  ".katex",
+  ".katex-display",
+  ".katex-mathml",
+  ".math",
+  ".math-inline",
+  ".math-display",
+  ".mermaid",
+  ".code-block",
+  ".code-toolbar",
+  ".copy-button",
+  ".footnotes",
+  "[aria-hidden='true']",
+  "[hidden]",
+  "[data-footnotes]",
+  "[data-footnote-backref]",
+  "[data-tts-skip='true']",
+].join(",");
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,8 +170,10 @@ export function MarkdownStudio() {
   const activeSpeechRequestIdRef = useRef(0);
   const sourceRef = useRef("");
   const lastHighlightedWordRef = useRef<string | null>(null);
+  const lastHighlightedRangeRef = useRef<string | null>(null);
   const lastScrollTargetTopRef = useRef<number | null>(null);
   const ttsPlaybackStateRef = useRef<TtsPlaybackState>("idle");
+  const ttsHighlightModeRef = useRef<TtsHighlightMode>("sentence");
   const ttsSentencesRef = useRef<SpeechSentenceSegment[]>([]);
   const ttsCurrentSentenceIndexRef = useRef(0);
   const ttsCurrentSentenceCharOffsetRef = useRef(0);
@@ -172,6 +217,7 @@ export function MarkdownStudio() {
   const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
   const [ttsPlaybackState, setTtsPlaybackState] = useState<TtsPlaybackState>("idle");
+  const [ttsHighlightMode, setTtsHighlightMode] = useState<TtsHighlightMode>("sentence");
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
   const source = activeDocument.source;
@@ -193,6 +239,9 @@ export function MarkdownStudio() {
   const ttsPrimaryLabel = isTtsActive ? "Stop reading" : "Listen";
   const ttsPauseIcon = ttsPlaybackState === "paused" ? Play : Pause;
   const ttsPauseLabel = ttsPlaybackState === "paused" ? "Resume" : "Pause";
+  const ttsHighlightIcon = ttsHighlightMode === "sentence" ? List : Type;
+  const ttsHighlightLabel =
+    ttsHighlightMode === "sentence" ? "TTS highlight mode: Sentence" : "TTS highlight mode: Word";
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
@@ -535,10 +584,15 @@ export function MarkdownStudio() {
     ttsPlaybackStateRef.current = ttsPlaybackState;
   }, [ttsPlaybackState]);
 
+  useEffect(() => {
+    ttsHighlightModeRef.current = ttsHighlightMode;
+  }, [ttsHighlightMode]);
+
   const clearWordHighlight = useCallback(() => {
     if (typeof window === "undefined") return;
 
     lastHighlightedWordRef.current = null;
+    lastHighlightedRangeRef.current = null;
 
     const cssHighlights = (
       window as Window & {
@@ -554,7 +608,7 @@ export function MarkdownStudio() {
   }, []);
 
   const highlightRange = useCallback((range: Range) => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return false;
 
     const HighlightConstructor = (
       window as Window & {
@@ -572,9 +626,10 @@ export function MarkdownStudio() {
       }
     ).CSS?.highlights;
 
-    if (!HighlightConstructor || !cssHighlights) return;
+    if (!HighlightConstructor || !cssHighlights) return false;
 
     cssHighlights.set(TTS_HIGHLIGHT_NAME, new HighlightConstructor(range));
+    return true;
   }, []);
 
   const scrollRangeIntoView = useCallback((range: Range) => {
@@ -608,12 +663,45 @@ export function MarkdownStudio() {
     startElement.scrollIntoView({ block: "center", behavior: "smooth" });
   }, []);
 
+  const highlightSpeechTextRange = useCallback(
+    (start: number, end: number): boolean => {
+      const preview = previewScrollRef.current;
+      if (!preview || start >= end) {
+        clearWordHighlight();
+        return false;
+      }
+
+      const rangeKey = `${start}:${end}`;
+      if (rangeKey === lastHighlightedRangeRef.current) return true;
+
+      const { segments } = collectSpeechTextSegments(preview);
+      const startSegment = findSegmentForOffset(segments, start);
+      const endSegment = findSegmentForOffset(segments, Math.max(end - 1, start));
+
+      if (!startSegment || !endSegment) {
+        clearWordHighlight();
+        return false;
+      }
+
+      const range = document.createRange();
+      range.setStart(startSegment.node, start - startSegment.start);
+      range.setEnd(endSegment.node, end - endSegment.start);
+
+      if (!highlightRange(range)) return false;
+
+      scrollRangeIntoView(range);
+      lastHighlightedRangeRef.current = rangeKey;
+      return true;
+    },
+    [clearWordHighlight, highlightRange, scrollRangeIntoView]
+  );
+
   const updateSpokenWord = useCallback(
     (charIndex: number) => {
       const preview = previewScrollRef.current;
       if (!preview) return;
 
-      const { text, segments } = collectSpeechTextSegments(preview);
+      const { text } = collectSpeechTextSegments(preview);
       const boundary = resolveWordBoundary(text, charIndex);
 
       if (!boundary) {
@@ -627,24 +715,29 @@ export function MarkdownStudio() {
         return;
       }
 
-      const startSegment = findSegmentForOffset(segments, boundary.start);
-      const endSegment = findSegmentForOffset(segments, Math.max(boundary.end - 1, boundary.start));
-
-      if (!startSegment || !endSegment) {
-        clearWordHighlight();
-        return;
+      if (highlightSpeechTextRange(boundary.start, boundary.end)) {
+        lastHighlightedWordRef.current = currentWord;
       }
-
-      const range = document.createRange();
-      range.setStart(startSegment.node, boundary.start - startSegment.start);
-      range.setEnd(endSegment.node, boundary.end - endSegment.start);
-
-      highlightRange(range);
-      scrollRangeIntoView(range);
-      lastHighlightedWordRef.current = currentWord;
     },
-    [clearWordHighlight, highlightRange, scrollRangeIntoView]
+    [clearWordHighlight, highlightSpeechTextRange]
   );
+
+  useEffect(() => {
+    if (ttsPlaybackState === "idle") return;
+
+    const sentence = ttsSentencesRef.current[ttsCurrentSentenceIndexRef.current];
+    if (!sentence) return;
+
+    const sentenceOffset = Math.min(Math.max(ttsCurrentSentenceCharOffsetRef.current, 0), sentence.text.length);
+
+    if (ttsHighlightMode === "sentence") {
+      lastHighlightedWordRef.current = null;
+      highlightSpeechTextRange(sentence.start + sentenceOffset, sentence.end);
+      return;
+    }
+
+    updateSpokenWord(sentence.start + sentenceOffset);
+  }, [highlightSpeechTextRange, ttsHighlightMode, ttsPlaybackState, updateSpokenWord]);
 
   const stopTts = useCallback(() => {
     activeSpeechRequestIdRef.current += 1;
@@ -691,7 +784,9 @@ export function MarkdownStudio() {
 
     window.setTimeout(() => {
       const preview = previewScrollRef.current;
-      const text = preview ? collectSpeechTextSegments(preview).text : nextDocument.source;
+      const text = preview
+        ? collectSpeechTextSegments(preview).text
+        : getFallbackSpeechTextFromSource(nextDocument.source);
       const sentences = splitTextIntoSentences(text);
 
       if (!sentences.length) {
@@ -758,6 +853,11 @@ export function MarkdownStudio() {
       ttsPlaybackStateRef.current = "playing";
       setTtsPlaybackState("playing");
 
+      if (ttsHighlightModeRef.current === "sentence") {
+        lastHighlightedWordRef.current = null;
+        highlightSpeechTextRange(sentence.start + actualStartOffset, sentence.end);
+      }
+
       const utterance = new SpeechSynthesisUtterance(remainingText);
 
       const voices = window.speechSynthesis.getVoices();
@@ -778,7 +878,9 @@ export function MarkdownStudio() {
         if (typeof event.charIndex === "number") {
           const absoluteSentenceOffset = actualStartOffset + event.charIndex;
           ttsCurrentSentenceCharOffsetRef.current = absoluteSentenceOffset;
-          updateSpokenWord(sentence.start + absoluteSentenceOffset);
+          if (ttsHighlightModeRef.current === "word") {
+            updateSpokenWord(sentence.start + absoluteSentenceOffset);
+          }
         }
       };
 
@@ -818,7 +920,7 @@ export function MarkdownStudio() {
 
       window.speechSynthesis.speak(utterance);
     },
-    [clearWordHighlight, speakNextDocument, updateSpokenWord]
+    [clearWordHighlight, highlightSpeechTextRange, speakNextDocument, updateSpokenWord]
   );
 
   useEffect(() => {
@@ -833,7 +935,7 @@ export function MarkdownStudio() {
     }
 
     const preview = previewScrollRef.current;
-    const text = preview ? collectSpeechTextSegments(preview).text : sourceRef.current;
+    const text = preview ? collectSpeechTextSegments(preview).text : getFallbackSpeechTextFromSource(sourceRef.current);
     const sentences = splitTextIntoSentences(text);
 
     if (sentences.length === 0) {
@@ -950,6 +1052,12 @@ export function MarkdownStudio() {
       startOrResumeTts();
     }, 0);
   }, [clearWordHighlight, startOrResumeTts]);
+
+  const toggleTtsHighlightMode = useCallback(() => {
+    setTtsHighlightMode(mode => (mode === "sentence" ? "word" : "sentence"));
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+  }, [clearWordHighlight]);
 
   useEffect(() => {
     return () => {
@@ -1200,8 +1308,8 @@ export function MarkdownStudio() {
           .markdown-body { padding: 2rem !important; }
         }
         .print-content { display: none; }
-        ::highlight(mdlens-tts-word) {
-          background: color-mix(in srgb, var(--accent) 28%, transparent);
+        ::highlight(mdlens-tts-current) {
+          background: color-mix(in srgb, #ef4444 20%, transparent);
           color: inherit;
         }
       `}</style>
@@ -1279,6 +1387,12 @@ export function MarkdownStudio() {
                   active={findOpen}
                 />
                 <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
+                <IconButton
+                  icon={ttsHighlightIcon}
+                  label={ttsHighlightLabel}
+                  onClick={toggleTtsHighlightMode}
+                  active={ttsHighlightMode === "sentence"}
+                />
 
                 {isTtsActive ? (
                   <>
@@ -1363,6 +1477,12 @@ export function MarkdownStudio() {
                     active={zenMode}
                   />
                   <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
+                  <IconButton
+                    icon={ttsHighlightIcon}
+                    label={ttsHighlightLabel}
+                    onClick={toggleTtsHighlightMode}
+                    active={ttsHighlightMode === "sentence"}
+                  />
                   {isTtsActive ? (
                     <>
                       <IconButton icon={ttsPauseIcon} label={ttsPauseLabel} onClick={toggleTtsPause} active />
@@ -1397,6 +1517,12 @@ export function MarkdownStudio() {
           {zenMode && (
             <div className="flex items-center justify-end gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
               <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
+              <IconButton
+                icon={ttsHighlightIcon}
+                label={ttsHighlightLabel}
+                onClick={toggleTtsHighlightMode}
+                active={ttsHighlightMode === "sentence"}
+              />
               {isTtsActive ? (
                 <>
                   <IconButton icon={ttsPauseIcon} label={ttsPauseLabel} onClick={toggleTtsPause} active />
@@ -2423,14 +2549,65 @@ function escapeRegex(value: string): string {
 }
 
 function collectSpeechTextSegments(root: HTMLElement): { text: string; segments: SpeechTextNodeSegment[] } {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const readableBlocks = getSpeechReadableBlocks(root);
+
+  if (!readableBlocks.length) {
+    return collectSpeechTextFromElement(root, null);
+  }
+
+  const segments: SpeechTextNodeSegment[] = [];
+  let text = "";
+
+  for (const block of readableBlocks) {
+    const blockResult = collectSpeechTextFromElement(block, block);
+
+    if (!blockResult.text.trim()) continue;
+
+    if (text.length > 0) text += "\n\n";
+
+    const offset = text.length;
+    text += blockResult.text;
+    segments.push(
+      ...blockResult.segments.map(segment => ({
+        ...segment,
+        start: segment.start + offset,
+        end: segment.end + offset,
+      }))
+    );
+  }
+
+  return { text, segments };
+}
+
+function getSpeechReadableBlocks(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TTS_READABLE_BLOCK_SELECTOR)).filter(
+    block => !shouldSkipTtsElement(block)
+  );
+}
+
+function collectSpeechTextFromElement(
+  root: HTMLElement,
+  readableBlockRoot: HTMLElement | null
+): { text: string; segments: SpeechTextNodeSegment[] } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parentElement = node.parentElement;
+
+      if (!parentElement || shouldSkipTtsElement(parentElement)) return NodeFilter.FILTER_REJECT;
+      if (readableBlockRoot && isInsideNestedReadableBlock(readableBlockRoot, parentElement)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
   const segments: SpeechTextNodeSegment[] = [];
   let text = "";
   let currentNode = walker.nextNode();
 
   while (currentNode) {
     const node = currentNode as Text;
-    const value = node.textContent ?? "";
+    const value = normalizeSpeechTextValue(node.textContent ?? "");
 
     if (value.length > 0) {
       segments.push({
@@ -2445,14 +2622,38 @@ function collectSpeechTextSegments(root: HTMLElement): { text: string; segments:
   }
 
   return {
-    text: text.replace(/\u00a0/g, " "),
+    text,
     segments,
   };
 }
 
+function shouldSkipTtsElement(element: Element): boolean {
+  return Boolean(element.closest(TTS_SKIP_SELECTOR));
+}
+
+function isInsideNestedReadableBlock(readableBlockRoot: HTMLElement, element: Element): boolean {
+  const nearestReadableBlock = element.closest(TTS_READABLE_BLOCK_SELECTOR);
+  return Boolean(nearestReadableBlock && nearestReadableBlock !== readableBlockRoot);
+}
+
+function normalizeSpeechTextValue(value: string): string {
+  return value.replace(/\u00a0/g, " ");
+}
+
+function getFallbackSpeechTextFromSource(source: string): string {
+  return source
+    .replace(/^---[\s\S]*?---\s*/, " ")
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, " ")
+    .replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, " ")
+    .replace(/\$[^$\n]+\$/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[`*_~>#-]+/g, " ");
+}
+
 function splitTextIntoSentences(text: string): SpeechSentenceSegment[] {
   const normalizedText = text.replace(/\u00a0/g, " ");
-  const sentenceRegex = /[^.!?।]+(?:[.!?।]+["')\]]*|$)/g;
+  const sentenceRegex = /[^\n.!?।]+(?:[.!?।]+["')\]]*|(?=\n|$))/g;
   const sentences: SpeechSentenceSegment[] = [];
 
   for (const match of normalizedText.matchAll(sentenceRegex)) {
