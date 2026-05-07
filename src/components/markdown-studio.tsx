@@ -22,6 +22,7 @@ import {
   Sun,
   Trash2,
   Upload,
+  Maximize2,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -50,6 +51,7 @@ const STORAGE_KEYS = {
   themeMode: "markdown-reader:theme-mode",
   splitPercent: "markdown-reader:split-percent",
   tocOpen: "markdown-reader:toc-open",
+  maxWidth: "markdown-reader:max-width",
 };
 
 const ACCEPTED_EXTENSIONS = [".md", ".markdown", ".mdx", ".txt"];
@@ -63,6 +65,7 @@ const THEME_VALUES: ThemeMode[] = ["system", "light", "dark"];
 const MIN_SPLIT_PERCENT = 15;
 const MAX_SPLIT_PERCENT = 85;
 const DOCUMENT_DRAG_TYPE = "application/x-mdlens-document-id";
+const DEFAULT_MAX_WIDTH = 1180;
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +83,7 @@ export function MarkdownStudio() {
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [splitPercent, setSplitPercent] = useState(50);
   const [tocOpen, setTocOpen] = useState(false);
+  const [maxWidth, setMaxWidth] = useState(1180);
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(
@@ -141,6 +145,12 @@ export function MarkdownStudio() {
       window.localStorage.getItem(STORAGE_KEYS.splitPercent)
     );
     const storedTocOpen = window.localStorage.getItem(STORAGE_KEYS.tocOpen);
+    const storedMaxWidth = Number(
+      window.localStorage.getItem(STORAGE_KEYS.maxWidth)
+    );
+    if (Number.isFinite(storedMaxWidth) && storedMaxWidth > 0) {
+      setMaxWidth(storedMaxWidth);
+    }
 
     if (storedDocuments.length) {
       setDocuments(storedDocuments);
@@ -232,6 +242,12 @@ export function MarkdownStudio() {
       window.localStorage.setItem(STORAGE_KEYS.tocOpen, String(tocOpen));
     }
   }, [mounted, tocOpen]);
+
+  useEffect(() => {
+    if (mounted) {
+      window.localStorage.setItem(STORAGE_KEYS.maxWidth, String(maxWidth));
+    }
+  }, [mounted, maxWidth]);
 
   useEffect(() => {
     previewScrollRef.current?.scrollTo({ top: 0 });
@@ -467,7 +483,9 @@ export function MarkdownStudio() {
     setRenamePopoverOpen(true);
   }
 
-  function renameActiveDocument(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+  function renameActiveDocument(
+    event: SyntheticEvent<HTMLFormElement, SubmitEvent>
+  ) {
     event.preventDefault();
 
     const nextFilename = normalizeDocumentFilename(renameValue);
@@ -699,7 +717,10 @@ export function MarkdownStudio() {
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6">
-      <section className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1180px] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]">
+      <section
+        style={{ maxWidth: maxWidth >= 99999 ? "100%" : `${maxWidth}px` }}
+        className="mx-auto flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]"
+      >
         <header className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2.5">
           <h1 className="mr-auto inline-flex items-center gap-2 text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
             <MDLensIcon
@@ -733,6 +754,10 @@ export function MarkdownStudio() {
               </button>
             ))}
           </div>
+
+          <div className="mx-0.5 hidden h-5 w-px bg-[var(--line)] sm:block" />
+
+          <WidthPopover maxWidth={maxWidth} onChange={setMaxWidth} />
 
           <div className="mx-0.5 hidden h-5 w-px bg-[var(--line)] sm:block" />
 
@@ -1066,6 +1091,124 @@ function ToolbarButton({
       <Icon aria-hidden size={13} />
       {label}
     </button>
+  );
+}
+
+function WidthPopover({
+  maxWidth,
+  onChange,
+}: {
+  maxWidth: number;
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customValue, setCustomValue] = useState(String(maxWidth));
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const PRESETS = [
+    { label: "640px", value: 640 },
+    { label: "800px", value: 800 },
+    { label: `${DEFAULT_MAX_WIDTH}px`, value: DEFAULT_MAX_WIDTH },
+    { label: "Full", value: 99999 },
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: globalThis.PointerEvent) {
+      if (
+        popoverRef.current &&
+        e.target instanceof Node &&
+        !popoverRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function applyCustom(e: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+    e.preventDefault();
+    const num = parseInt(customValue.trim());
+    if (Number.isFinite(num) && num > 0) {
+      onChange(num);
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={popoverRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+      >
+        <Maximize2 aria-hidden size={13} />
+        Width
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Set content max width"
+          className="absolute right-0 top-10 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+        >
+          <p className="mb-2 font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
+            Max content width
+          </p>
+          <div className="mb-2 grid grid-cols-2 gap-1.5">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => {
+                  onChange(preset.value);
+                  setCustomValue(
+                    preset.value >= 99999 ? "100%" : String(preset.value)
+                  );
+                  setOpen(false);
+                }}
+                className={cx(
+                  "rounded-md border px-2 py-1.5 text-center font-bold transition",
+                  maxWidth === preset.value
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
+                    : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--text)]"
+                )}
+              >
+                {preset.label}
+                {preset.value === DEFAULT_MAX_WIDTH && (
+                  <span className="ml-1 font-normal opacity-50 text-[10px]">
+                    (default)
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={applyCustom} className="flex gap-1.5">
+            <input
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              placeholder="e.g. 960"
+              className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            />
+            <button
+              type="submit"
+              className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)]"
+            >
+              Set
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 
