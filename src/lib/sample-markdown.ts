@@ -6,11 +6,12 @@ tags:
   - preview
   - diagrams
   - math
+  - callouts
 ---
 
 # Field Notes for MDLens
 
-Paste markdown, drop a file, or edit this sample. The preview supports **GFM**, math, diagrams, callouts, sanitized raw HTML, footnotes, external links, and syntax-highlighted code.
+Paste markdown, drop a file, or edit this sample. The preview supports **GFM**, math, diagrams, callouts, sanitized raw HTML, footnotes, external links, images, and syntax-highlighted code.
 
 > Good readers should stay calm when the document gets complicated.
 
@@ -21,9 +22,29 @@ Paste markdown, drop a file, or edit this sample. The preview supports **GFM**, 
 - [x] Math such as $E = mc^2$ and display equations
 - [x] Mermaid diagrams rendered client-side
 - [x] Callout blocks using directives
+- [x] GitHub-style alerts
 - [x] Sanitized raw HTML like <mark>highlighted text</mark>
 - [x] Footnotes and heading deep links
+- [x] Safe external links
+- [x] Images with lazy loading
 - [ ] Anything that requires executing MDX components
+
+## GitHub Alerts
+
+> [!NOTE]
+> GitHub-style alerts render as calm MDLens callouts.
+
+> [!TIP]
+> Use headings to create a useful outline automatically.
+
+> [!IMPORTANT]
+> External links open in a new tab with safe \`rel\` attributes.
+
+> [!WARNING]
+> Raw HTML is sanitized before it reaches the preview.
+
+> [!CAUTION]
+> Scripts and dangerous inline attributes should never execute.
 
 ## Callouts
 
@@ -51,11 +72,23 @@ Scripts should never execute inside the preview.
 Callouts are written using markdown directives such as \`:::tip\` and \`:::warning\`.
 :::
 
+:::tip[Reader tip]
+Custom callout titles can make notes feel more intentional.
+:::
+
+:::warning{title="Sanitization reminder"}
+Even when HTML is allowed, unsafe protocols and attributes should be blocked.
+:::
+
 ## Links
 
 External links like [React Markdown](https://github.com/remarkjs/react-markdown) open in a new tab with safe \`rel\` attributes.
 
 You can also link to a local heading: [Jump to the diagram](#diagram).
+
+Unsafe links should be blocked by the renderer: [This should not run](javascript:alert("blocked")).
+
+Email and phone links can still be useful: [hello@example.com](mailto:hello@example.com) and [Call support](tel:+911234567890).
 
 ## Table Alignment
 
@@ -65,6 +98,7 @@ You can also link to a local heading: [Jump to the diagram](#diagram).
 | Themes | Ready | System, light, dark, and palette presets |
 | Safety | Ready | Scripts and dangerous HTML are removed |
 | Outline | Ready | Generated from headings |
+| Tables | Ready | Wide tables scroll horizontally |
 
 ## Task List
 
@@ -73,6 +107,24 @@ You can also link to a local heading: [Jump to the diagram](#diagram).
 - [x] Preview safely
 - [ ] Export polished notes
 - [ ] Add custom typography presets
+
+## Lists
+
+1. Parse markdown.
+2. Sanitize raw HTML.
+3. Render the preview.
+4. Keep the reading experience calm.
+
+Nested lists work too:
+
+- Markdown
+  - GFM
+  - Math
+  - Diagrams
+- Reader features
+  - Outline
+  - Deep links
+  - Safe external links
 
 ## Code
 
@@ -97,6 +149,10 @@ export function readingTime(words: number) {
   "features": ["preview", "math", "diagrams", "callouts"],
   "safeByDefault": true
 }
+\`\`\`
+
+\`\`\`bash
+pnpm add react-markdown remark-gfm remark-math rehype-katex rehype-sanitize
 \`\`\`
 
 ## Diagram
@@ -148,9 +204,11 @@ The abbreviation <abbr title="Markdown">MD</abbr> stays readable with a title to
 
 <img src="x" onerror="alert('this should also never run')" />
 
+<a href="javascript:alert('blocked')">This unsafe link should be neutralized</a>
+
 ## Image
 
-![Minimal document preview illustration](https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=1200&auto=format&fit=crop)
+![Minimal document preview illustration](https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=1200&auto=format&fit=crop "A calm writing desk used as an image caption.")
 
 ## Formatting
 
@@ -158,7 +216,27 @@ You can use **bold**, _italic_, ***bold italic***, and ~~double-tilde strikethro
 
 Single tilde is intentionally not treated as strikethrough because \`singleTilde: false\` is enabled.
 
+Horizontal rules are useful for separating sections.
+
+---
+
 ## Deep Links
 
 Headings get stable IDs, so the outline can link straight to each section.
+
+### A nested heading
+
+Nested headings should also appear in the outline.
+
+#### A deeper heading
+
+This helps test heading levels from \`h1\` through \`h6\`.
+
+##### Small heading
+
+Useful for dense technical notes.
+
+###### Tiny heading
+
+Still linkable, still readable.
 `;

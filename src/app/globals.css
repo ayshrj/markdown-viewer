@@ -462,6 +462,23 @@ textarea {
   text-underline-offset: 3px;
 }
 
+.markdown-body .image-figure {
+  display: block;
+  margin: 1rem auto;
+}
+
+.markdown-body .image-figure img {
+  margin-bottom: 0.4rem;
+}
+
+.markdown-body .image-caption {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* ─── Tables ─────────────────────────────────────────────────────────────────*/
 
 .table-scroll {

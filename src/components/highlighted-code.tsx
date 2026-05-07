@@ -16,6 +16,7 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const label = language?.trim() || "text";
+  const lineCount = code.trimEnd().split("\n").length;
 
   useEffect(() => {
     let active = true;
@@ -67,7 +68,12 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
   return (
     <figure className="code-block overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--code-bg)] text-[var(--code-text)]">
       <figcaption className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2 text-xs tracking-[0.14em] text-[var(--muted)] uppercase">
-        <span>{label}</span>
+        <span className="flex items-center gap-2">
+          <span>{label}</span>
+          <span className="text-[var(--muted-soft)]">
+            {lineCount} {lineCount === 1 ? "line" : "lines"}
+          </span>
+        </span>
         <CopyButton copied={copied} onClick={copyCode} />
       </figcaption>
       {html ? (
