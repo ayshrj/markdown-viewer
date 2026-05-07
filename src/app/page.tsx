@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+
 import { MarkdownStudio } from "@/components/markdown-studio";
 import {
   ACTIVE_DOCUMENT_TITLE_COOKIE,
@@ -12,9 +13,7 @@ import {
 
 export async function generateMetadata(): Promise<Metadata> {
   const cookieStore = await cookies();
-  const filename = getFilenameFromCookie(
-    cookieStore.get(ACTIVE_DOCUMENT_TITLE_COOKIE)?.value
-  );
+  const filename = getFilenameFromCookie(cookieStore.get(ACTIVE_DOCUMENT_TITLE_COOKIE)?.value);
 
   return {
     title: {
@@ -42,10 +41,7 @@ export default function Home() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <MarkdownStudio />
     </>
   );

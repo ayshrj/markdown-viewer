@@ -2,6 +2,7 @@
 
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { useEffect, useState } from "react";
+
 import MDLensIcon from "@/components/mdlens-icon";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -9,11 +10,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Keep the server and first client render identical. The real app mounts
   // only after next-themes can read the user's stored/system preference.
-  /* eslint-disable react-hooks/set-state-in-effect */
+
   useEffect(() => {
     setMounted(true);
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!mounted) {
     return <StartupLoader />;
@@ -52,9 +52,7 @@ function StartupLoader() {
             </span>
           </p>
         </div>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          Preparing your theme...
-        </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">Preparing your theme...</p>
       </div>
     </main>
   );

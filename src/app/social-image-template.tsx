@@ -1,4 +1,5 @@
 import * as React from "react";
+
 import { SITE_DESCRIPTION, SITE_HOST, SITE_TITLE } from "@/lib/site";
 
 function SocialDocumentIcon() {
@@ -235,26 +236,24 @@ export function SocialImageTemplate() {
               maxWidth: 780,
             }}
           >
-            {["Multi-file", "GFM", "Mermaid", "Math", "Syntax highlight"].map(
-              (label) => (
-                <div
-                  key={label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "11px 18px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(238, 238, 234, 0.14)",
-                    background: "rgba(255,255,255,0.065)",
-                    color: "#F3F3EE",
-                    fontSize: 19,
-                    fontWeight: 750,
-                  }}
-                >
-                  {label}
-                </div>
-              )
-            )}
+            {["Multi-file", "GFM", "Mermaid", "Math", "Syntax highlight"].map(label => (
+              <div
+                key={label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "11px 18px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(238, 238, 234, 0.14)",
+                  background: "rgba(255,255,255,0.065)",
+                  color: "#F3F3EE",
+                  fontSize: 19,
+                  fontWeight: 750,
+                }}
+              >
+                {label}
+              </div>
+            ))}
           </div>
         </div>
 

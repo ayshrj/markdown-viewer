@@ -9,17 +9,15 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeExternalLinks from "rehype-external-links";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, {
-  defaultSchema,
-  type Options as SanitizeOptions,
-} from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema, type Options as SanitizeOptions } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkDirective from "remark-directive";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { visit } from "unist-util-visit";
 import type { Node } from "unist";
+import { visit } from "unist-util-visit";
+
 import { HighlightedCode } from "@/components/highlighted-code";
 import { MermaidBlock } from "@/components/mermaid-block";
 
@@ -40,25 +38,13 @@ type DirectiveNode = Node & {
 };
 
 function remarkCalloutDirectives() {
-  const CALLOUT_TYPES = new Set([
-    "tip",
-    "warning",
-    "danger",
-    "info",
-    "note",
-    "success",
-  ]);
+  const CALLOUT_TYPES = new Set(["tip", "warning", "danger", "info", "note", "success"]);
 
   return (tree: Node) => {
-    visit(tree, (rawNode) => {
+    visit(tree, rawNode => {
       const node = rawNode as DirectiveNode;
 
-      if (
-        node.type !== "containerDirective" &&
-        node.type !== "leafDirective" &&
-        node.type !== "textDirective"
-      )
-        return;
+      if (node.type !== "containerDirective" && node.type !== "leafDirective" && node.type !== "textDirective") return;
 
       const name = node.name ?? "";
 
@@ -81,57 +67,24 @@ function remarkCalloutDirectives() {
 
 const sanitizeSchema: SanitizeOptions = {
   ...defaultSchema,
-  tagNames: [
-    ...(defaultSchema.tagNames ?? []),
-    "abbr",
-    "details",
-    "kbd",
-    "mark",
-    "sub",
-    "summary",
-    "sup",
-  ],
+  tagNames: [...(defaultSchema.tagNames ?? []), "abbr", "details", "kbd", "mark", "sub", "summary", "sup"],
   attributes: {
     ...defaultSchema.attributes,
-    a: [
-      ...(defaultSchema.attributes?.a ?? []),
-      "ariaLabel",
-      "className",
-      "target",
-      "rel",
-    ],
+    a: [...(defaultSchema.attributes?.a ?? []), "ariaLabel", "className", "target", "rel"],
     abbr: [...(defaultSchema.attributes?.abbr ?? []), "title"],
-    code: [
-      ...(defaultSchema.attributes?.code ?? []),
-      ["className", /^language-./],
-    ],
+    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^language-./]],
     details: [...(defaultSchema.attributes?.details ?? []), "open"],
-    div: [
-      ...(defaultSchema.attributes?.div ?? []),
-      "className",
-      "data-callout",
-      "data-label",
-    ],
+    div: [...(defaultSchema.attributes?.div ?? []), "className", "data-callout", "data-label"],
     h1: [...(defaultSchema.attributes?.h1 ?? []), "id", "className"],
     h2: [...(defaultSchema.attributes?.h2 ?? []), "id", "className"],
     h3: [...(defaultSchema.attributes?.h3 ?? []), "id", "className"],
     h4: [...(defaultSchema.attributes?.h4 ?? []), "id", "className"],
     h5: [...(defaultSchema.attributes?.h5 ?? []), "id", "className"],
     h6: [...(defaultSchema.attributes?.h6 ?? []), "id", "className"],
-    input: [
-      ...(defaultSchema.attributes?.input ?? []),
-      ["type", "checkbox"],
-      "checked",
-      "disabled",
-      "readOnly",
-    ],
+    input: [...(defaultSchema.attributes?.input ?? []), ["type", "checkbox"], "checked", "disabled", "readOnly"],
     li: [...(defaultSchema.attributes?.li ?? []), "className"],
     mark: [...(defaultSchema.attributes?.mark ?? []), "className"],
-    section: [
-      ...(defaultSchema.attributes?.section ?? []),
-      "className",
-      "data-footnotes",
-    ],
+    section: [...(defaultSchema.attributes?.section ?? []), "className", "data-footnotes"],
     span: [...(defaultSchema.attributes?.span ?? []), "className"],
     summary: [...(defaultSchema.attributes?.summary ?? []), "className"],
     sup: [...(defaultSchema.attributes?.sup ?? []), "id"],
@@ -145,9 +98,7 @@ const sanitizeSchema: SanitizeOptions = {
   },
 };
 
-function createComponents(
-  onLinkClick: MarkdownRendererProps["onLinkClick"]
-): Components {
+function createComponents(onLinkClick: MarkdownRendererProps["onLinkClick"]): Components {
   return {
     a: ({ children, className, href, rel, target, title }) => {
       function handleClick(event: MouseEvent<HTMLAnchorElement>) {
@@ -157,14 +108,7 @@ function createComponents(
       }
 
       return (
-        <a
-          className={className}
-          href={href}
-          onClick={handleClick}
-          rel={rel}
-          target={target}
-          title={title}
-        >
+        <a className={className} href={href} onClick={handleClick} rel={rel} target={target} title={title}>
           {children}
         </a>
       );
@@ -178,8 +122,7 @@ function createComponents(
       const isBlock = Boolean(language) || code.includes("\n");
 
       if (!isBlock) return <code className={className}>{children}</code>;
-      if (language?.toLowerCase() === "mermaid")
-        return <MermaidBlock code={code} />;
+      if (language?.toLowerCase() === "mermaid") return <MermaidBlock code={code} />;
       return <HighlightedCode code={code} language={language ?? "text"} />;
     },
 
@@ -191,12 +134,7 @@ function createComponents(
     h6: ({ children, id }) => <h6 id={id}>{children}</h6>,
 
     img: ({ alt, src, title }) => (
-      <img
-        alt={alt ?? ""}
-        loading="lazy"
-        src={typeof src === "string" ? src : undefined}
-        title={title}
-      />
+      <img alt={alt ?? ""} loading="lazy" src={typeof src === "string" ? src : undefined} title={title} />
     ),
 
     input: ({ checked, type }) => {
@@ -223,10 +161,7 @@ function createComponents(
   };
 }
 
-export function MarkdownRenderer({
-  content,
-  onLinkClick,
-}: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps) {
   return (
     <ReactMarkdown
       components={createComponents(onLinkClick)}

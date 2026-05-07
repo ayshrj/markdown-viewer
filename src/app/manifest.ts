@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+
 import { SITE_DESCRIPTION, SITE_ICON_PATH, SITE_NAME } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {

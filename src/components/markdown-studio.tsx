@@ -1,33 +1,18 @@
 "use client";
 
-import type {
-  ChangeEvent,
-  DragEvent as ReactDragEvent,
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent,
-  PointerEvent,
-  SyntheticEvent,
-} from "react";
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useCallback,
-} from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AlignLeft,
-  List,
   Copy,
   Download,
   FilePlus,
   FileText,
+  List,
   Maximize2,
   Minimize2,
   Monitor,
   Moon,
+  MoreHorizontal,
   Pencil,
   Printer,
   RefreshCcw,
@@ -38,16 +23,25 @@ import {
   Type,
   Upload,
   WrapText,
-  MoreHorizontal,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import type {
+  ChangeEvent,
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent,
+  PointerEvent,
+  SyntheticEvent,
+} from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
+import { useScreenSize } from "@/hooks/use-screen-size";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
 import { ACTIVE_DOCUMENT_TITLE_COOKIE, SITE_NAME } from "@/lib/site";
 import type { ThemeMode } from "@/types/markdown";
-import { useScreenSize } from "@/hooks/use-screen-size";
 
 type ViewMode = "split" | "edit" | "read";
 
@@ -112,12 +106,8 @@ export function MarkdownStudio() {
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-  const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(
-    null
-  );
-  const [dropTargetDocumentId, setDropTargetDocumentId] = useState<
-    string | null
-  >(null);
+  const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
+  const [dropTargetDocumentId, setDropTargetDocumentId] = useState<string | null>(null);
   const [renamePopoverOpen, setRenamePopoverOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -137,29 +127,18 @@ export function MarkdownStudio() {
   const filename = activeDocument.filename;
   const updatedAt = activeDocument.updatedAt;
   const deferredSource = useDeferredValue(source);
-  const markdownDocument = parseMarkdownDocument(
-    deferredSource,
-    filename,
-    updatedAt
-  );
-  const stats = getDocumentStats(
-    markdownDocument.content,
-    markdownDocument.headings
-  );
+  const markdownDocument = parseMarkdownDocument(deferredSource, filename, updatedAt);
+  const stats = getDocumentStats(markdownDocument.content, markdownDocument.headings);
   const lineCount = source ? source.split("\n").length : 0;
   const selectedTheme = isThemeMode(theme) ? theme : "system";
-  const themeIcon =
-    selectedTheme === "light" ? Sun : selectedTheme === "dark" ? Moon : Monitor;
+  const themeIcon = selectedTheme === "light" ? Sun : selectedTheme === "dark" ? Moon : Monitor;
   const showEditor = viewMode === "split" || viewMode === "edit";
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
   const findMatchCount = getFindMatchCount(findQuery, source);
 
   const { breakpoint } = useScreenSize();
-  const isSmallScreen = useMemo(
-    () => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint),
-    [breakpoint]
-  );
+  const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
 
   const sheetAction = useCallback(
     (fn: () => void) => () => {
@@ -198,49 +177,33 @@ export function MarkdownStudio() {
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         e.preventDefault();
-        setFindOpen((o) => !o);
+        setFindOpen(o => !o);
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const storedDocuments = parseStoredDocuments(
-      window.localStorage.getItem(STORAGE_KEYS.documents)
-    );
-    const storedActiveDocumentId = window.localStorage.getItem(
-      STORAGE_KEYS.activeDocumentId
-    );
+    const storedDocuments = parseStoredDocuments(window.localStorage.getItem(STORAGE_KEYS.documents));
+    const storedActiveDocumentId = window.localStorage.getItem(STORAGE_KEYS.activeDocumentId);
     const storedSource = window.localStorage.getItem(STORAGE_KEYS.source);
     const storedFilename = window.localStorage.getItem(STORAGE_KEYS.filename);
-    const storedUpdatedAt = Number(
-      window.localStorage.getItem(STORAGE_KEYS.updatedAt)
-    );
+    const storedUpdatedAt = Number(window.localStorage.getItem(STORAGE_KEYS.updatedAt));
     const storedViewMode = window.localStorage.getItem(STORAGE_KEYS.viewMode);
     const storedTheme = window.localStorage.getItem(STORAGE_KEYS.themeMode);
-    const storedSplitPercent = Number(
-      window.localStorage.getItem(STORAGE_KEYS.splitPercent)
-    );
+    const storedSplitPercent = Number(window.localStorage.getItem(STORAGE_KEYS.splitPercent));
     const storedTocOpen = window.localStorage.getItem(STORAGE_KEYS.tocOpen);
-    const storedMaxWidth = Number(
-      window.localStorage.getItem(STORAGE_KEYS.maxWidth)
-    );
+    const storedMaxWidth = Number(window.localStorage.getItem(STORAGE_KEYS.maxWidth));
     const storedWordWrap = window.localStorage.getItem(STORAGE_KEYS.wordWrap);
-    const storedFontSize = Number(
-      window.localStorage.getItem(STORAGE_KEYS.fontSize)
-    );
-    const storedWordGoal = Number(
-      window.localStorage.getItem(STORAGE_KEYS.wordGoal)
-    );
+    const storedFontSize = Number(window.localStorage.getItem(STORAGE_KEYS.fontSize));
+    const storedWordGoal = Number(window.localStorage.getItem(STORAGE_KEYS.wordGoal));
     const storedZenMode = window.localStorage.getItem(STORAGE_KEYS.zenMode);
 
     if (storedDocuments.length) {
       setDocuments(storedDocuments);
       setActiveDocumentId(
-        storedActiveDocumentId &&
-          storedDocuments.some((d) => d.id === storedActiveDocumentId)
+        storedActiveDocumentId && storedDocuments.some(d => d.id === storedActiveDocumentId)
           ? storedActiveDocumentId
           : storedDocuments[0].id
       );
@@ -249,9 +212,7 @@ export function MarkdownStudio() {
         storedSource,
         storedFilename || undefined,
         "local-draft",
-        Number.isFinite(storedUpdatedAt) && storedUpdatedAt > 0
-          ? storedUpdatedAt
-          : Date.now()
+        Number.isFinite(storedUpdatedAt) && storedUpdatedAt > 0 ? storedUpdatedAt : Date.now()
       );
       setDocuments([migratedDocument]);
       setActiveDocumentId(migratedDocument.id);
@@ -262,32 +223,21 @@ export function MarkdownStudio() {
 
     if (isViewMode(storedViewMode)) setViewMode(storedViewMode);
     if (isThemeMode(storedTheme)) setTheme(storedTheme);
-    if (Number.isFinite(storedSplitPercent))
-      setSplitPercent(clampSplitPercent(storedSplitPercent));
+    if (Number.isFinite(storedSplitPercent)) setSplitPercent(clampSplitPercent(storedSplitPercent));
     if (storedTocOpen === "true") setTocOpen(true);
-    if (Number.isFinite(storedMaxWidth) && storedMaxWidth > 0)
-      setMaxWidth(storedMaxWidth);
+    if (Number.isFinite(storedMaxWidth) && storedMaxWidth > 0) setMaxWidth(storedMaxWidth);
     if (storedWordWrap !== null) setWordWrap(storedWordWrap !== "false");
-    if (Number.isFinite(storedFontSize) && storedFontSize >= FONT_SIZE_MIN)
-      setFontSize(storedFontSize);
-    if (Number.isFinite(storedWordGoal) && storedWordGoal > 0)
-      setWordGoal(storedWordGoal);
+    if (Number.isFinite(storedFontSize) && storedFontSize >= FONT_SIZE_MIN) setFontSize(storedFontSize);
+    if (Number.isFinite(storedWordGoal) && storedWordGoal > 0) setWordGoal(storedWordGoal);
     if (storedZenMode === "true") setZenMode(true);
 
     setMounted(true);
   }, [setTheme]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!mounted) return;
-    window.localStorage.setItem(
-      STORAGE_KEYS.documents,
-      JSON.stringify(documents)
-    );
-    window.localStorage.setItem(
-      STORAGE_KEYS.activeDocumentId,
-      activeDocumentId
-    );
+    window.localStorage.setItem(STORAGE_KEYS.documents, JSON.stringify(documents));
+    window.localStorage.setItem(STORAGE_KEYS.activeDocumentId, activeDocumentId);
     window.localStorage.setItem(STORAGE_KEYS.source, source);
     window.localStorage.setItem(STORAGE_KEYS.updatedAt, String(updatedAt));
     if (filename) {
@@ -321,35 +271,25 @@ export function MarkdownStudio() {
     if (mounted) window.localStorage.setItem(STORAGE_KEYS.viewMode, viewMode);
   }, [mounted, viewMode]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(
-        STORAGE_KEYS.splitPercent,
-        splitPercent.toFixed(2)
-      );
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.splitPercent, splitPercent.toFixed(2));
   }, [mounted, splitPercent]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.tocOpen, String(tocOpen));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.tocOpen, String(tocOpen));
   }, [mounted, tocOpen]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.maxWidth, String(maxWidth));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.maxWidth, String(maxWidth));
   }, [mounted, maxWidth]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.wordWrap, String(wordWrap));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.wordWrap, String(wordWrap));
   }, [mounted, wordWrap]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.fontSize, String(fontSize));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.fontSize, String(fontSize));
   }, [mounted, fontSize]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.wordGoal, String(wordGoal));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.wordGoal, String(wordGoal));
   }, [mounted, wordGoal]);
   useEffect(() => {
-    if (mounted)
-      window.localStorage.setItem(STORAGE_KEYS.zenMode, String(zenMode));
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.zenMode, String(zenMode));
   }, [mounted, zenMode]);
 
   useEffect(() => {
@@ -411,11 +351,9 @@ export function MarkdownStudio() {
   function updateSource(nextSource: string) {
     const nextUpdatedAt = Date.now();
     setSavedStatus("unsaved");
-    setDocuments((currentDocuments) =>
-      currentDocuments.map((document) =>
-        document.id === activeDocumentId
-          ? { ...document, source: nextSource, updatedAt: nextUpdatedAt }
-          : document
+    setDocuments(currentDocuments =>
+      currentDocuments.map(document =>
+        document.id === activeDocumentId ? { ...document, source: nextSource, updatedAt: nextUpdatedAt } : document
       )
     );
   }
@@ -432,21 +370,16 @@ export function MarkdownStudio() {
       return;
     }
     const loadedDocuments = await Promise.all(
-      acceptedFiles.map(async (file) =>
-        createDocument(await file.text(), file.name)
-      )
+      acceptedFiles.map(async file => createDocument(await file.text(), file.name))
     );
-    setDocuments((currentDocuments) => [
-      ...currentDocuments,
-      ...loadedDocuments,
-    ]);
+    setDocuments(currentDocuments => [...currentDocuments, ...loadedDocuments]);
     setActiveDocumentId(loadedDocuments[0].id);
     setToast(
       rejectedCount > 0
         ? `Loaded ${loadedDocuments.length}, skipped ${rejectedCount}`
         : loadedDocuments.length === 1
-        ? `Loaded ${loadedDocuments[0].filename}`
-        : `Loaded ${loadedDocuments.length} documents`
+          ? `Loaded ${loadedDocuments[0].filename}`
+          : `Loaded ${loadedDocuments.length} documents`
     );
   }
 
@@ -513,7 +446,7 @@ export function MarkdownStudio() {
 
   function loadSample() {
     const sampleDocument = createDocument(SAMPLE_MARKDOWN, "Sample.md");
-    setDocuments((currentDocuments) => [...currentDocuments, sampleDocument]);
+    setDocuments(currentDocuments => [...currentDocuments, sampleDocument]);
     setActiveDocumentId(sampleDocument.id);
     setToast("Loaded sample");
   }
@@ -528,20 +461,16 @@ export function MarkdownStudio() {
     setRenamePopoverOpen(true);
   }
 
-  function renameActiveDocument(
-    event: SyntheticEvent<HTMLFormElement, SubmitEvent>
-  ) {
+  function renameActiveDocument(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     const nextFilename = normalizeDocumentFilename(renameValue);
     if (!nextFilename) {
       setToast("Name cannot be empty");
       return;
     }
-    setDocuments((currentDocuments) =>
-      currentDocuments.map((document) =>
-        document.id === activeDocumentId
-          ? { ...document, filename: nextFilename, updatedAt: Date.now() }
-          : document
+    setDocuments(currentDocuments =>
+      currentDocuments.map(document =>
+        document.id === activeDocumentId ? { ...document, filename: nextFilename, updatedAt: Date.now() } : document
       )
     );
     setRenamePopoverOpen(false);
@@ -550,7 +479,7 @@ export function MarkdownStudio() {
 
   function createBlankDocument() {
     const document = createDocument("", getNextUntitledFilename(documents));
-    setDocuments((currentDocuments) => [...currentDocuments, document]);
+    setDocuments(currentDocuments => [...currentDocuments, document]);
     setActiveDocumentId(document.id);
     setViewMode("edit");
     setToast("New document");
@@ -564,51 +493,35 @@ export function MarkdownStudio() {
       setToast("Removed document");
       return;
     }
-    const nextDocuments = documents.filter(
-      (document) => document.id !== documentId
-    );
+    const nextDocuments = documents.filter(document => document.id !== documentId);
     setDocuments(nextDocuments);
-    if (documentId === activeDocumentId)
-      setActiveDocumentId(nextDocuments[0].id);
+    if (documentId === activeDocumentId) setActiveDocumentId(nextDocuments[0].id);
     setToast("Removed document");
   }
 
-  function handleDocumentDragStart(
-    event: ReactDragEvent<HTMLDivElement>,
-    documentId: string
-  ) {
+  function handleDocumentDragStart(event: ReactDragEvent<HTMLDivElement>, documentId: string) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, documentId);
     setDraggedDocumentId(documentId);
     setDropTargetDocumentId(documentId);
   }
 
-  function handleDocumentDragOver(
-    event: ReactDragEvent<HTMLDivElement>,
-    targetDocumentId: string
-  ) {
+  function handleDocumentDragOver(event: ReactDragEvent<HTMLDivElement>, targetDocumentId: string) {
     if (!isDocumentTabDrag(event) || !draggedDocumentId) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    if (targetDocumentId !== dropTargetDocumentId)
-      setDropTargetDocumentId(targetDocumentId);
+    if (targetDocumentId !== dropTargetDocumentId) setDropTargetDocumentId(targetDocumentId);
   }
 
-  function handleDocumentDrop(
-    event: ReactDragEvent<HTMLDivElement>,
-    targetDocumentId: string
-  ) {
+  function handleDocumentDrop(event: ReactDragEvent<HTMLDivElement>, targetDocumentId: string) {
     if (!isDocumentTabDrag(event)) return;
     event.preventDefault();
-    const sourceDocumentId =
-      event.dataTransfer.getData(DOCUMENT_DRAG_TYPE) || draggedDocumentId;
+    const sourceDocumentId = event.dataTransfer.getData(DOCUMENT_DRAG_TYPE) || draggedDocumentId;
     if (!sourceDocumentId || sourceDocumentId === targetDocumentId) {
       clearDocumentDragState();
       return;
     }
-    setDocuments((currentDocuments) =>
-      reorderDocuments(currentDocuments, sourceDocumentId, targetDocumentId)
-    );
+    setDocuments(currentDocuments => reorderDocuments(currentDocuments, sourceDocumentId, targetDocumentId));
     clearDocumentDragState();
   }
 
@@ -622,9 +535,7 @@ export function MarkdownStudio() {
     const linkedFilename = getLinkedMarkdownFilename(href);
     if (!linkedFilename && hash) return scrollPreviewToHeading(hash);
     if (!linkedFilename) return false;
-    const linkedDocument = documents.find((document) =>
-      documentMatchesFilename(document, linkedFilename)
-    );
+    const linkedDocument = documents.find(document => documentMatchesFilename(document, linkedFilename));
     if (!linkedDocument) {
       setToast(`Open ${linkedFilename} first`);
       return true;
@@ -636,18 +547,13 @@ export function MarkdownStudio() {
     return true;
   }
 
-  function handleTocClick(
-    event: MouseEvent<HTMLAnchorElement>,
-    headingId: string
-  ) {
+  function handleTocClick(event: MouseEvent<HTMLAnchorElement>, headingId: string) {
     if (scrollPreviewToHeading(headingId)) event.preventDefault();
   }
 
   function scrollPreviewToHeading(headingId: string): boolean {
     const scrollContainer = previewScrollRef.current;
-    const target = scrollContainer?.querySelector<HTMLElement>(
-      `#${CSS.escape(headingId)}`
-    );
+    const target = scrollContainer?.querySelector<HTMLElement>(`#${CSS.escape(headingId)}`);
     if (!scrollContainer || !target) return false;
     const containerTop = scrollContainer.getBoundingClientRect().top;
     const targetTop = target.getBoundingClientRect().top;
@@ -725,8 +631,7 @@ export function MarkdownStudio() {
     setSplitPercent(clampSplitPercent(nextPercent));
   }
 
-  const wordGoalPercent =
-    wordGoal > 0 ? Math.min((stats.words / wordGoal) * 100, 100) : 0;
+  const wordGoalPercent = wordGoal > 0 ? Math.min((stats.words / wordGoal) * 100, 100) : 0;
   const wordGoalDone = wordGoal > 0 && stats.words >= wordGoal;
 
   return (
@@ -741,19 +646,13 @@ export function MarkdownStudio() {
       `}</style>
 
       <div className="print-content">
-        <div
-          className="markdown-body"
-          style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}
-        >
+        <div className="markdown-body" style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
           <MarkdownRenderer content={source} />
         </div>
       </div>
 
       <main
-        className={cx(
-          "h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6",
-          zenMode && "zen-mode"
-        )}
+        className={cx("h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6", zenMode && "zen-mode")}
       >
         <section
           className="mx-auto flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]"
@@ -761,7 +660,7 @@ export function MarkdownStudio() {
         >
           {!zenMode && (
             <header className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-3 py-2">
-              <h1 className="mr-1 inline-flex items-center gap-2 text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+              <h1 className="mr-1 inline-flex items-center gap-2 text-[0.8rem] font-bold tracking-[0.08em] text-[var(--muted)] uppercase">
                 <MDLensIcon
                   aria-hidden
                   className="mdlens-icon size-5 rounded-[0.35rem]"
@@ -769,7 +668,7 @@ export function MarkdownStudio() {
                   showSubtitle={false}
                   size={20}
                 />
-                <span className="hidden xs:inline">
+                <span className="xs:inline hidden">
                   <span className="mdlens-wordmark-primary">MD</span>
                   <span className="mdlens-wordmark-accent">Lens</span>
                 </span>
@@ -778,7 +677,7 @@ export function MarkdownStudio() {
               <div className="mx-2 h-5 w-px bg-[var(--line)]" />
 
               <div className="flex rounded-lg bg-[var(--panel-sunken)] p-0.5">
-                {VIEW_MODES.map((mode) => (
+                {VIEW_MODES.map(mode => (
                   <button
                     key={mode.value}
                     type="button"
@@ -807,31 +706,11 @@ export function MarkdownStudio() {
                   multiple
                   onChange={handleFileChange}
                 />
-                <IconButton
-                  icon={Upload}
-                  label="Upload file"
-                  onClick={openFilePicker}
-                />
-                <IconButton
-                  icon={FilePlus}
-                  label="New document"
-                  onClick={createBlankDocument}
-                />
-                <IconButton
-                  icon={Download}
-                  label="Download .md"
-                  onClick={downloadMarkdown}
-                />
-                <IconButton
-                  icon={Copy}
-                  label="Copy markdown"
-                  onClick={copyMarkdown}
-                />
-                <IconButton
-                  icon={Printer}
-                  label="Print"
-                  onClick={printDocument}
-                />
+                <IconButton icon={Upload} label="Upload file" onClick={openFilePicker} />
+                <IconButton icon={FilePlus} label="New document" onClick={createBlankDocument} />
+                <IconButton icon={Download} label="Download .md" onClick={downloadMarkdown} />
+                <IconButton icon={Copy} label="Copy markdown" onClick={copyMarkdown} />
+                <IconButton icon={Printer} label="Print" onClick={printDocument} />
               </div>
 
               <div className="mx-2 hidden h-5 w-px bg-[var(--line)] sm:block" />
@@ -840,13 +719,13 @@ export function MarkdownStudio() {
                 <IconButton
                   icon={Search}
                   label="Find & replace (⌘F)"
-                  onClick={() => setFindOpen((o) => !o)}
+                  onClick={() => setFindOpen(o => !o)}
                   active={findOpen}
                 />
                 <IconButton
                   icon={WrapText}
                   label={wordWrap ? "Word wrap on" : "Word wrap off"}
-                  onClick={() => setWordWrap((w) => !w)}
+                  onClick={() => setWordWrap(w => !w)}
                   active={wordWrap}
                 />
                 <FontSizePopover fontSize={fontSize} onChange={setFontSize} />
@@ -857,29 +736,16 @@ export function MarkdownStudio() {
               <div className="flex-1" />
 
               <div className="hidden items-center gap-0.5 sm:flex">
-                <IconButton
-                  icon={RefreshCcw}
-                  label="Load sample"
-                  onClick={loadSample}
-                />
-                <IconButton
-                  icon={Trash2}
-                  label="Clear document"
-                  onClick={clearDocument}
-                  variant="danger"
-                />
+                <IconButton icon={RefreshCcw} label="Load sample" onClick={loadSample} />
+                <IconButton icon={Trash2} label="Clear document" onClick={clearDocument} variant="danger" />
                 <div className="mx-2 h-5 w-px bg-[var(--line)]" />
                 <IconButton
                   icon={zenMode ? Minimize2 : Maximize2}
                   label="Zen mode"
-                  onClick={() => setZenMode((z) => !z)}
+                  onClick={() => setZenMode(z => !z)}
                   active={zenMode}
                 />
-                <IconButton
-                  icon={themeIcon}
-                  label={`Theme: ${capitalize(selectedTheme)}`}
-                  onClick={cycleTheme}
-                />
+                <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
               </div>
 
               <div className="flex items-center gap-0.5 sm:hidden">
@@ -895,14 +761,10 @@ export function MarkdownStudio() {
                 <IconButton
                   icon={Search}
                   label="Find & replace"
-                  onClick={() => setFindOpen((o) => !o)}
+                  onClick={() => setFindOpen(o => !o)}
                   active={findOpen}
                 />
-                <IconButton
-                  icon={themeIcon}
-                  label={`Theme: ${capitalize(selectedTheme)}`}
-                  onClick={cycleTheme}
-                />
+                <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
 
                 <button
                   type="button"
@@ -914,18 +776,15 @@ export function MarkdownStudio() {
                 </button>
               </div>
 
-              <MobileToolbarSheet
-                open={mobileSheetOpen}
-                onClose={() => setMobileSheetOpen(false)}
-              >
-                <div className="flex items-center gap-1 border-b border-[var(--line)] px-4 pb-3 pt-1">
-                  <span className="mr-auto text-xs font-bold uppercase tracking-widest text-[var(--muted-soft)]">
+              <MobileToolbarSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)}>
+                <div className="flex items-center gap-1 border-b border-[var(--line)] px-4 pt-1 pb-3">
+                  <span className="mr-auto text-xs font-bold tracking-widest text-[var(--muted-soft)] uppercase">
                     Editor
                   </span>
                   <IconButton
                     icon={WrapText}
                     label={wordWrap ? "Word wrap on" : "Word wrap off"}
-                    onClick={() => setWordWrap((w) => !w)}
+                    onClick={() => setWordWrap(w => !w)}
                     active={wordWrap}
                   />
                   <FontSizePopover fontSize={fontSize} onChange={setFontSize} />
@@ -934,42 +793,18 @@ export function MarkdownStudio() {
                   <IconButton
                     icon={zenMode ? Minimize2 : Maximize2}
                     label="Zen mode"
-                    onClick={sheetAction(() => setZenMode((z) => !z))}
+                    onClick={sheetAction(() => setZenMode(z => !z))}
                     active={zenMode}
                   />
                 </div>
 
                 <div className="py-1">
-                  <MobileSheetRow
-                    icon={Upload}
-                    label="Upload file"
-                    onClick={openFilePickerFromSheet}
-                  />
-                  <MobileSheetRow
-                    icon={FilePlus}
-                    label="New document"
-                    onClick={sheetAction(createBlankDocument)}
-                  />
-                  <MobileSheetRow
-                    icon={Download}
-                    label="Download .md"
-                    onClick={sheetAction(downloadMarkdown)}
-                  />
-                  <MobileSheetRow
-                    icon={Copy}
-                    label="Copy markdown"
-                    onClick={sheetAction(copyMarkdown)}
-                  />
-                  <MobileSheetRow
-                    icon={Printer}
-                    label="Print"
-                    onClick={sheetAction(printDocument)}
-                  />
-                  <MobileSheetRow
-                    icon={RefreshCcw}
-                    label="Load sample"
-                    onClick={sheetAction(loadSample)}
-                  />
+                  <MobileSheetRow icon={Upload} label="Upload file" onClick={openFilePickerFromSheet} />
+                  <MobileSheetRow icon={FilePlus} label="New document" onClick={sheetAction(createBlankDocument)} />
+                  <MobileSheetRow icon={Download} label="Download .md" onClick={sheetAction(downloadMarkdown)} />
+                  <MobileSheetRow icon={Copy} label="Copy markdown" onClick={sheetAction(copyMarkdown)} />
+                  <MobileSheetRow icon={Printer} label="Print" onClick={sheetAction(printDocument)} />
+                  <MobileSheetRow icon={RefreshCcw} label="Load sample" onClick={sheetAction(loadSample)} />
                 </div>
 
                 <div className="border-t border-[var(--line)] py-1">
@@ -1000,22 +835,15 @@ export function MarkdownStudio() {
           )}
 
           <div className="document-strip flex items-center gap-2 border-b border-[var(--line)] bg-[var(--panel)] px-3 py-2">
-            <div
-              className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto"
-              aria-label="Open markdown documents"
-            >
+            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto" aria-label="Open markdown documents">
               {documents.map((document, index) => (
                 <div
                   key={document.id}
                   draggable
                   onDragEnd={clearDocumentDragState}
-                  onDragOver={(event) =>
-                    handleDocumentDragOver(event, document.id)
-                  }
-                  onDragStart={(event) =>
-                    handleDocumentDragStart(event, document.id)
-                  }
-                  onDrop={(event) => handleDocumentDrop(event, document.id)}
+                  onDragOver={event => handleDocumentDragOver(event, document.id)}
+                  onDragStart={event => handleDocumentDragStart(event, document.id)}
+                  onDrop={event => handleDocumentDrop(event, document.id)}
                   className={cx(
                     "document-tab group flex max-w-[220px] shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
                     document.id === activeDocumentId
@@ -1035,9 +863,7 @@ export function MarkdownStudio() {
                     }}
                     className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
                     title={getDocumentLabel(document, index)}
-                    aria-current={
-                      document.id === activeDocumentId ? "page" : undefined
-                    }
+                    aria-current={document.id === activeDocumentId ? "page" : undefined}
                   >
                     {getDocumentLabel(document, index)}
                   </button>
@@ -1068,16 +894,16 @@ export function MarkdownStudio() {
               {renamePopoverOpen ? (
                 <form
                   onSubmit={renameActiveDocument}
-                  className="absolute right-0 top-10 z-20 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+                  className="absolute top-10 right-0 z-20 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
                   role="dialog"
                   aria-label="Rename active markdown document"
                 >
-                  <label className="block font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
+                  <label className="block font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
                     Document name
                   </label>
                   <input
                     value={renameValue}
-                    onChange={(event) => setRenameValue(event.target.value)}
+                    onChange={event => setRenameValue(event.target.value)}
                     className="mt-2 w-full rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2.5 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                     autoFocus
                   />
@@ -1103,15 +929,11 @@ export function MarkdownStudio() {
 
           {findOpen && (
             <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2">
-              <Search
-                aria-hidden
-                size={13}
-                className="shrink-0 text-[var(--muted-soft)]"
-              />
+              <Search aria-hidden size={13} className="shrink-0 text-[var(--muted-soft)]" />
               <input
                 autoFocus
                 value={findQuery}
-                onChange={(e) => setFindQuery(e.target.value)}
+                onChange={e => setFindQuery(e.target.value)}
                 onKeyDown={handleFindKeyDown}
                 placeholder="Find…"
                 aria-label="Find text"
@@ -1119,16 +941,14 @@ export function MarkdownStudio() {
               />
               <input
                 value={replaceQuery}
-                onChange={(e) => setReplaceQuery(e.target.value)}
+                onChange={e => setReplaceQuery(e.target.value)}
                 onKeyDown={handleFindKeyDown}
                 placeholder="Replace with…"
                 aria-label="Replace with"
                 className="h-7 min-w-[120px] flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
               />
               <span className="shrink-0 text-xs text-[var(--muted-soft)]">
-                {findQuery
-                  ? `${findMatchCount} match${findMatchCount !== 1 ? "es" : ""}`
-                  : ""}
+                {findQuery ? `${findMatchCount} match${findMatchCount !== 1 ? "es" : ""}` : ""}
               </span>
               <button
                 type="button"
@@ -1164,11 +984,11 @@ export function MarkdownStudio() {
                 <div className="toc-header">Contents</div>
                 <nav className="toc-list" aria-label="Table of contents">
                   {markdownDocument.headings.length ? (
-                    markdownDocument.headings.map((heading) => (
+                    markdownDocument.headings.map(heading => (
                       <a
                         key={`${heading.id}-${heading.depth}-${heading.text}`}
                         href={`#${heading.id}`}
-                        onClick={(event) => handleTocClick(event, heading.id)}
+                        onClick={event => handleTocClick(event, heading.id)}
                         className={cx("toc-item", `toc-depth-${heading.depth}`)}
                       >
                         {heading.text}
@@ -1191,7 +1011,7 @@ export function MarkdownStudio() {
                     : { flex: "1 1 auto", width: "100%" }
                 }
               >
-                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
+                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
                   Source
                 </div>
                 <textarea
@@ -1220,10 +1040,7 @@ export function MarkdownStudio() {
                 onPointerMove={handleResize}
                 onPointerUp={stopResize}
                 onPointerCancel={stopResize}
-                className={cx(
-                  "split-divider hidden lg:flex",
-                  isResizing && "is-dragging"
-                )}
+                className={cx("split-divider hidden lg:flex", isResizing && "is-dragging")}
               >
                 <span aria-hidden className="split-divider-dots">
                   <span />
@@ -1246,7 +1063,7 @@ export function MarkdownStudio() {
                 {viewMode === "read" ? (
                   <button
                     type="button"
-                    onClick={() => setTocOpen((open) => !open)}
+                    onClick={() => setTocOpen(open => !open)}
                     className="toc-toggle"
                     title="Toggle table of contents"
                     aria-label="Toggle table of contents"
@@ -1255,36 +1072,22 @@ export function MarkdownStudio() {
                     <List aria-hidden size={14} />
                   </button>
                 ) : null}
-                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
+                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
                   {previewPending ? "Previewing..." : "Preview"}
                 </div>
                 <article
                   ref={previewScrollRef}
                   style={{ fontSize: `${fontSize}px` }}
-                  className={cx(
-                    "markdown-body flex-1 overflow-y-auto p-6",
-                    viewMode === "read" && "w-full sm:p-10"
-                  )}
+                  className={cx("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
                   {markdownDocument.content.trim() ? (
-                    <MarkdownRenderer
-                      content={markdownDocument.content}
-                      onLinkClick={openLinkedDocument}
-                    />
+                    <MarkdownRenderer content={markdownDocument.content} onLinkClick={openLinkedDocument} />
                   ) : (
                     <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
                       <div>
-                        <FileText
-                          aria-hidden
-                          className="mx-auto mb-3 text-[var(--muted-soft)]"
-                          size={34}
-                        />
-                        <p className="font-bold text-[var(--text)]">
-                          Nothing to preview yet
-                        </p>
-                        <p className="mt-1">
-                          Write or upload markdown to begin.
-                        </p>
+                        <FileText aria-hidden className="mx-auto mb-3 text-[var(--muted-soft)]" size={34} />
+                        <p className="font-bold text-[var(--text)]">Nothing to preview yet</p>
+                        <p className="mt-1">Write or upload markdown to begin.</p>
                       </div>
                     </div>
                   )}
@@ -1299,9 +1102,7 @@ export function MarkdownStudio() {
             <span>{lineCount.toLocaleString()} lines</span>
             <span>~{stats.readingMinutes} min read</span>
             <span>{documents.length.toLocaleString()} docs open</span>
-            <span className="min-w-0 truncate">
-              {filename ?? "Local draft"}
-            </span>
+            <span className="min-w-0 truncate">{filename ?? "Local draft"}</span>
 
             <span
               className={cx(
@@ -1319,12 +1120,7 @@ export function MarkdownStudio() {
             </span>
 
             {wordGoal > 0 && (
-              <span
-                className={cx(
-                  "flex items-center gap-1.5",
-                  wordGoalDone && "text-green-600"
-                )}
-              >
+              <span className={cx("flex items-center gap-1.5", wordGoalDone && "text-green-600")}>
                 <span
                   className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-[var(--line)]"
                   title={`${stats.words} / ${wordGoal} words`}
@@ -1337,9 +1133,7 @@ export function MarkdownStudio() {
                     style={{ width: `${wordGoalPercent}%` }}
                   />
                 </span>
-                {wordGoalDone
-                  ? "Goal reached!"
-                  : `${stats.words} / ${wordGoal}`}
+                {wordGoalDone ? "Goal reached!" : `${stats.words} / ${wordGoal}`}
               </span>
             )}
           </footer>
@@ -1354,17 +1148,9 @@ export function MarkdownStudio() {
         {isDraggingFiles ? (
           <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center border-[6px] border-dashed border-[var(--accent)] bg-[var(--bg)]/70 p-6 backdrop-blur-[2px]">
             <div className="rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] px-5 py-4 text-center shadow-sm">
-              <Upload
-                aria-hidden
-                className="mx-auto mb-2 text-[var(--muted)]"
-                size={24}
-              />
-              <p className="text-sm font-bold text-[var(--text)]">
-                Drop markdown files to add them
-              </p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                .md, .markdown, .mdx, and .txt files are accepted.
-              </p>
+              <Upload aria-hidden className="mx-auto mb-2 text-[var(--muted)]" size={24} />
+              <p className="text-sm font-bold text-[var(--text)]">Drop markdown files to add them</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">.md, .markdown, .mdx, and .txt files are accepted.</p>
             </div>
           </div>
         ) : null}
@@ -1398,8 +1184,8 @@ function IconButton({
         active
           ? "bg-[var(--accent-soft)] text-[var(--accent)]"
           : variant === "danger"
-          ? "text-[var(--muted)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-          : "text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+            ? "text-[var(--muted)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            : "text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
       )}
     >
       <Icon aria-hidden size={15} />
@@ -1429,17 +1215,13 @@ function MobileToolbarSheet({
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-30 bg-black/30"
-        onClick={onClose}
-        aria-hidden
-      />
+      <div className="fixed inset-0 z-30 bg-black/30" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-label="More actions"
-        className="fixed bottom-0 left-0 right-0 z-40 rounded-t-2xl border-t border-[var(--line-strong)] bg-[var(--panel)] pb-safe"
+        className="pb-safe fixed right-0 bottom-0 left-0 z-40 rounded-t-2xl border-t border-[var(--line-strong)] bg-[var(--panel)]"
       >
-        <div className="mx-auto mb-3 mt-2.5 h-1 w-10 rounded-full bg-[var(--line-strong)]" />
+        <div className="mx-auto mt-2.5 mb-3 h-1 w-10 rounded-full bg-[var(--line-strong)]" />
         {children}
       </div>
     </>
@@ -1465,43 +1247,24 @@ function MobileSheetRow({
       onClick={onClick}
       className={cx(
         "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-[var(--panel-sunken)]",
-        active
-          ? "text-[var(--accent)]"
-          : variant === "danger"
-          ? "text-red-600 dark:text-red-400"
-          : "text-[var(--text)]"
+        active ? "text-[var(--accent)]" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-[var(--text)]"
       )}
     >
       <Icon aria-hidden size={18} className="shrink-0 text-[var(--muted)]" />
       {label}
-      {active && (
-        <span className="ml-auto text-xs font-bold text-[var(--accent)]">
-          On
-        </span>
-      )}
+      {active && <span className="ml-auto text-xs font-bold text-[var(--accent)]">On</span>}
     </button>
   );
 }
 
-function FontSizePopover({
-  fontSize,
-  onChange,
-}: {
-  fontSize: number;
-  onChange: (v: number) => void;
-}) {
+function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: globalThis.PointerEvent) {
-      if (
-        ref.current &&
-        e.target instanceof Node &&
-        !ref.current.contains(e.target)
-      )
-        setOpen(false);
+      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -1518,10 +1281,10 @@ function FontSizePopover({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
       >
         <Type aria-hidden size={13} />
         {fontSize}px
@@ -1530,11 +1293,9 @@ function FontSizePopover({
         <div
           role="dialog"
           aria-label="Font size"
-          className="absolute right-0 top-10 z-20 w-52 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+          className="absolute top-10 right-0 z-20 w-52 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
         >
-          <p className="mb-2 font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
-            Font size
-          </p>
+          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Font size</p>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1550,7 +1311,7 @@ function FontSizePopover({
               max={FONT_SIZE_MAX}
               step={1}
               value={fontSize}
-              onChange={(e) => onChange(Number(e.target.value))}
+              onChange={e => onChange(Number(e.target.value))}
               className="flex-1 accent-[var(--accent)]"
               aria-label="Font size slider"
             />
@@ -1581,13 +1342,7 @@ function FontSizePopover({
   );
 }
 
-function WidthPopover({
-  maxWidth,
-  onChange,
-}: {
-  maxWidth: number;
-  onChange: (v: number) => void;
-}) {
+function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const [customValue, setCustomValue] = useState(String(maxWidth));
   const ref = useRef<HTMLDivElement>(null);
@@ -1602,12 +1357,7 @@ function WidthPopover({
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: globalThis.PointerEvent) {
-      if (
-        ref.current &&
-        e.target instanceof Node &&
-        !ref.current.contains(e.target)
-      )
-        setOpen(false);
+      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -1633,10 +1383,10 @@ function WidthPopover({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
       >
         <AlignLeft aria-hidden size={13} />
         Width
@@ -1645,21 +1395,17 @@ function WidthPopover({
         <div
           role="dialog"
           aria-label="Set content max width"
-          className="absolute right-0 top-10 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+          className="absolute top-10 right-0 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
         >
-          <p className="mb-2 font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
-            Max content width
-          </p>
+          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Max content width</p>
           <div className="mb-2 grid grid-cols-2 gap-1.5">
-            {PRESETS.map((preset) => (
+            {PRESETS.map(preset => (
               <button
                 key={preset.value}
                 type="button"
                 onClick={() => {
                   onChange(preset.value);
-                  setCustomValue(
-                    preset.value >= 99999 ? "full" : String(preset.value)
-                  );
+                  setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
                   setOpen(false);
                 }}
                 className={cx(
@@ -1670,16 +1416,14 @@ function WidthPopover({
                 )}
               >
                 {preset.label}
-                {preset.value === 1180 && (
-                  <span className="ml-1 font-normal opacity-50">default</span>
-                )}
+                {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
               </button>
             ))}
           </div>
           <form onSubmit={applyCustom} className="flex gap-1.5">
             <input
               value={customValue}
-              onChange={(e) => setCustomValue(e.target.value)}
+              onChange={e => setCustomValue(e.target.value)}
               placeholder="e.g. 960"
               className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
             />
@@ -1696,28 +1440,15 @@ function WidthPopover({
   );
 }
 
-function WordGoalPopover({
-  wordGoal,
-  onChange,
-}: {
-  wordGoal: number;
-  onChange: (v: number) => void;
-}) {
+function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState(
-    wordGoal > 0 ? String(wordGoal) : ""
-  );
+  const [inputValue, setInputValue] = useState(wordGoal > 0 ? String(wordGoal) : "");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: globalThis.PointerEvent) {
-      if (
-        ref.current &&
-        e.target instanceof Node &&
-        !ref.current.contains(e.target)
-      )
-        setOpen(false);
+      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -1752,12 +1483,12 @@ function WordGoalPopover({
         type="button"
         onClick={() => {
           setInputValue(wordGoal > 0 ? String(wordGoal) : "");
-          setOpen((o) => !o);
+          setOpen(o => !o);
         }}
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cx(
-          "inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-xs font-bold transition",
+          "inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap transition",
           wordGoal > 0
             ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
             : "border-[var(--line-strong)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
@@ -1770,13 +1501,11 @@ function WordGoalPopover({
         <div
           role="dialog"
           aria-label="Set word goal"
-          className="absolute right-0 top-10 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+          className="absolute top-10 right-0 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
         >
-          <p className="mb-2 font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
-            Word goal
-          </p>
+          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Word goal</p>
           <div className="mb-2 grid grid-cols-4 gap-1">
-            {QUICK_GOALS.map((g) => (
+            {QUICK_GOALS.map(g => (
               <button
                 key={g}
                 type="button"
@@ -1799,7 +1528,7 @@ function WordGoalPopover({
           <form onSubmit={handleSubmit} className="flex gap-1.5">
             <input
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={e => setInputValue(e.target.value)}
               placeholder="Custom…"
               type="number"
               min={1}
@@ -1831,27 +1560,18 @@ function WordGoalPopover({
   );
 }
 
-function createDocument(
-  source: string,
-  filename?: string,
-  stableId?: string,
-  updatedAt = Date.now()
-): SessionDocument {
+function createDocument(source: string, filename?: string, stableId?: string, updatedAt = Date.now()): SessionDocument {
   return {
-    id:
-      stableId ?? `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
+    id: stableId ?? `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
     source,
     filename,
     updatedAt,
   };
 }
 
-function getActiveDocument(
-  documents: SessionDocument[],
-  activeDocumentId: string
-): SessionDocument {
+function getActiveDocument(documents: SessionDocument[], activeDocumentId: string): SessionDocument {
   return (
-    documents.find((document) => document.id === activeDocumentId) ??
+    documents.find(document => document.id === activeDocumentId) ??
     documents[0] ??
     createDocument("", "Untitled 1.md", "fallback")
   );
@@ -1865,9 +1585,7 @@ function getDocumentLabel(document: SessionDocument, index: number): string {
 function getNextUntitledFilename(documents: SessionDocument[]): string {
   const usedNumbers = new Set<number>();
   for (const document of documents) {
-    const match = /^Untitled(?:\s+(\d+))?\.md$/i.exec(
-      document.filename?.trim() ?? ""
-    );
+    const match = /^Untitled(?:\s+(\d+))?\.md$/i.exec(document.filename?.trim() ?? "");
     if (match) usedNumbers.add(match[1] ? Number(match[1]) : 1);
   }
   let nextNumber = 1;
@@ -1878,9 +1596,7 @@ function getNextUntitledFilename(documents: SessionDocument[]): string {
 function normalizeDocumentFilename(value: string): string {
   const trimmedValue = value.trim();
   if (!trimmedValue) return "";
-  return isAcceptedMarkdownPath(trimmedValue)
-    ? trimmedValue
-    : `${trimmedValue}.md`;
+  return isAcceptedMarkdownPath(trimmedValue) ? trimmedValue : `${trimmedValue}.md`;
 }
 
 function getDocumentPageTitle(filename: string | undefined): string {
@@ -1914,10 +1630,9 @@ function reorderDocuments(
   sourceDocumentId: string,
   targetDocumentId: string
 ): SessionDocument[] {
-  const sourceIndex = documents.findIndex((d) => d.id === sourceDocumentId);
-  const targetIndex = documents.findIndex((d) => d.id === targetDocumentId);
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex)
-    return documents;
+  const sourceIndex = documents.findIndex(d => d.id === sourceDocumentId);
+  const targetIndex = documents.findIndex(d => d.id === targetDocumentId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return documents;
   const nextDocuments = [...documents];
   const [movedDocument] = nextDocuments.splice(sourceIndex, 1);
   nextDocuments.splice(targetIndex, 0, movedDocument);
@@ -1928,14 +1643,9 @@ function isDocumentTabDrag(event: ReactDragEvent<HTMLElement>): boolean {
   return Array.from(event.dataTransfer.types).includes(DOCUMENT_DRAG_TYPE);
 }
 
-function documentMatchesFilename(
-  document: SessionDocument,
-  linkedFilename: string
-): boolean {
+function documentMatchesFilename(document: SessionDocument, linkedFilename: string): boolean {
   if (!document.filename) return false;
-  return (
-    normalizeFilename(document.filename) === normalizeFilename(linkedFilename)
-  );
+  return normalizeFilename(document.filename) === normalizeFilename(linkedFilename);
 }
 
 function getLinkedMarkdownFilename(href: string): string | null {
@@ -1977,9 +1687,7 @@ function decodePathSegment(value: string): string {
 
 function isAcceptedMarkdownPath(path: string): boolean {
   const normalizedPath = path.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some((extension) =>
-    normalizedPath.endsWith(extension)
-  );
+  return ACCEPTED_EXTENSIONS.some(extension => normalizedPath.endsWith(extension));
 }
 
 function parseStoredDocuments(value: string | null): SessionDocument[] {
@@ -2009,8 +1717,7 @@ function isStoredDocument(value: unknown): value is SessionDocument {
   return (
     typeof candidate.id === "string" &&
     typeof candidate.source === "string" &&
-    (candidate.filename === undefined ||
-      typeof candidate.filename === "string") &&
+    (candidate.filename === undefined || typeof candidate.filename === "string") &&
     typeof candidate.updatedAt === "number" &&
     Number.isFinite(candidate.updatedAt)
   );
@@ -2018,7 +1725,7 @@ function isStoredDocument(value: unknown): value is SessionDocument {
 
 function isAcceptedFile(file: File): boolean {
   const name = file.name.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension));
+  return ACCEPTED_EXTENSIONS.some(extension => name.endsWith(extension));
 }
 
 function hasDraggedFiles(event: DragEvent): boolean {
@@ -2035,22 +1742,16 @@ function isViewMode(value: unknown): value is ViewMode {
 
 function normalizeWheelDelta(event: WheelEvent): number {
   if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE)
-    return event.deltaY * window.innerHeight;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight;
   return event.deltaY;
 }
 
 function isEditableWheelTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  return Boolean(
-    target.closest("textarea, input, select, [contenteditable='true']")
-  );
+  return Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
 }
 
-function isInsideElement(
-  target: EventTarget | null,
-  element: Element | null
-): boolean {
+function isInsideElement(target: EventTarget | null, element: Element | null): boolean {
   return Boolean(element && target instanceof Node && element.contains(target));
 }
 

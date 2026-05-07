@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+
+import { CopyButton } from "@/components/copy-button";
 
 type HighlightedCodeProps = {
   code: string;
@@ -27,12 +28,10 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
         const shiki = await import("shiki");
         const requestedLanguage = label.toLowerCase();
         const languageName =
-          requestedLanguage in shiki.bundledLanguages ||
-          requestedLanguage in shiki.bundledLanguagesAlias
+          requestedLanguage in shiki.bundledLanguages || requestedLanguage in shiki.bundledLanguagesAlias
             ? requestedLanguage
             : "text";
-        const theme =
-          resolvedTheme === "dark" ? "github-dark-default" : "github-light-default";
+        const theme = resolvedTheme === "dark" ? "github-dark-default" : "github-light-default";
         const nextHtml = await shiki.codeToHtml(code, {
           lang: languageName,
           theme,
@@ -67,16 +66,9 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
 
   return (
     <figure className="code-block overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--code-bg)] text-[var(--code-text)]">
-      <figcaption className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+      <figcaption className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2 text-xs tracking-[0.14em] text-[var(--muted)] uppercase">
         <span>{label}</span>
-        <button
-          type="button"
-          onClick={copyCode}
-          className="inline-flex min-h-8 items-center gap-2 rounded-md border border-[var(--line-strong)] px-2.5 text-[0.7rem] font-bold transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-        >
-          {copied ? <Check aria-hidden size={14} /> : <Copy aria-hidden size={14} />}
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <CopyButton copied={copied} onClick={copyCode} />
       </figcaption>
       {html ? (
         <div dangerouslySetInnerHTML={{ __html: html }} />

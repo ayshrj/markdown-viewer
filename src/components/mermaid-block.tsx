@@ -1,8 +1,10 @@
 "use client";
 
-import { Check, Copy, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useId, useState } from "react";
+
+import { CopyButton } from "@/components/copy-button";
 
 type MermaidBlockProps = {
   code: string;
@@ -63,17 +65,10 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   }
 
   return (
-    <figure className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)]">
-      <figcaption className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
+    <figure className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
+      <figcaption className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2 text-xs tracking-[0.14em] text-[var(--muted)] uppercase">
         <span>Mermaid</span>
-        <button
-          type="button"
-          onClick={copyDiagram}
-          className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[var(--line)] px-3 text-[0.7rem] font-black transition hover:bg-[var(--accent-soft)]"
-        >
-          {copied ? <Check aria-hidden size={14} /> : <Copy aria-hidden size={14} />}
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <CopyButton copied={copied} onClick={copyDiagram} />
       </figcaption>
       {error ? (
         <div className="flex gap-3 p-4 text-sm text-[var(--danger)]">
@@ -86,10 +81,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
           </div>
         </div>
       ) : svg ? (
-        <div
-          className="mermaid overflow-x-auto p-4"
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+        <div className="mermaid overflow-x-auto p-4" dangerouslySetInnerHTML={{ __html: svg }} />
       ) : (
         <div className="p-4 text-sm text-[var(--muted)]">Rendering diagram...</div>
       )}

@@ -16,11 +16,11 @@ for (const file of files) {
   // script is unnecessary; effects apply the selected theme after mount.
   source = source.replace(
     /return t\.createElement\("script",\{[^}]*dangerouslySetInnerHTML:\{__html:`\(\$\{M\.toString\(\)\}\)\(\$\{p\}\)`\}\}\)/,
-    "return null",
+    "return null"
   );
   source = source.replace(
     /return t\.createElement\("script",\{[^}]*dangerouslySetInnerHTML:\{__html:`\(\$\{I\.toString\(\)\}\)\(\$\{p\}\)`\}\}\)/,
-    "return null",
+    "return null"
   );
 
   if (source === original) {

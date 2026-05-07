@@ -1,17 +1,14 @@
 import GithubSlugger from "github-slugger";
 import matter from "gray-matter";
-import type {
-  DocumentStats,
-  HeadingItem,
-  ParsedMarkdownDocument,
-} from "@/types/markdown";
+
+import type { DocumentStats, HeadingItem, ParsedMarkdownDocument } from "@/types/markdown";
 
 const WORDS_PER_MINUTE = 220;
 
 export function parseMarkdownDocument(
   source: string,
   filename: string | undefined,
-  updatedAt: number,
+  updatedAt: number
 ): ParsedMarkdownDocument {
   const parsed = parseFrontmatter(source);
   const headings = extractHeadings(parsed.content);
@@ -28,13 +25,10 @@ export function parseMarkdownDocument(
   };
 }
 
-export function getDocumentStats(
-  content: string,
-  headings: HeadingItem[],
-): DocumentStats {
+export function getDocumentStats(content: string, headings: HeadingItem[]): DocumentStats {
   const words = stripMarkdown(content)
     .split(/\s+/)
-    .map((word) => word.trim())
+    .map(word => word.trim())
     .filter(Boolean).length;
 
   return {
@@ -51,7 +45,7 @@ export function formatFrontmatterValue(value: unknown): string {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => String(item)).join(", ");
+    return value.map(item => String(item)).join(", ");
   }
 
   if (value && typeof value === "object") {
@@ -146,11 +140,7 @@ function stripMarkdown(value: string): string {
     .trim();
 }
 
-function getTitle(
-  frontmatter: Record<string, unknown>,
-  headings: HeadingItem[],
-  filename: string | undefined,
-): string {
+function getTitle(frontmatter: Record<string, unknown>, headings: HeadingItem[], filename: string | undefined): string {
   if (typeof frontmatter.title === "string" && frontmatter.title.trim()) {
     return frontmatter.title.trim();
   }

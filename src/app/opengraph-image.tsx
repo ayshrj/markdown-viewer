@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+
 import { SocialImageTemplate } from "@/app/social-image-template";
 import { SITE_NAME } from "@/lib/site";
 

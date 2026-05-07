@@ -1,0 +1,22 @@
+# deps
+node_modules
+
+# build outputs
+.next
+out
+build
+
+# coverage
+coverage
+
+# misc
+*.log
+.DS_Store
+
+# env
+.env*
+
+# lockfiles
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

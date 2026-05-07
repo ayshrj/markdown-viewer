@@ -5,13 +5,7 @@ type MDLensIconProps = React.SVGProps<SVGSVGElement> & {
   showSubtitle?: boolean;
 };
 
-const MDLensIcon: React.FC<MDLensIconProps> = ({
-  size = 1024,
-  showSubtitle = true,
-  width,
-  height,
-  ...props
-}) => {
+const MDLensIcon: React.FC<MDLensIconProps> = ({ size = 1024, showSubtitle = true, width, height, ...props }) => {
   return (
     <svg
       width={width ?? size}
@@ -25,22 +19,12 @@ const MDLensIcon: React.FC<MDLensIconProps> = ({
     >
       <title id="title">MDLens App Icon</title>
 
-      <desc id="desc">
-        Minimal Markdown reader icon with a document, split preview, and
-        magnifying lens.
-      </desc>
+      <desc id="desc">Minimal Markdown reader icon with a document, split preview, and magnifying lens.</desc>
 
       <rect width="1024" height="1024" rx="220" fill="var(--mdlens-icon-bg)" />
 
       {/* Soft app-icon inner glow */}
-      <rect
-        x="80"
-        y="80"
-        width="864"
-        height="864"
-        rx="180"
-        fill="var(--mdlens-icon-inner)"
-      />
+      <rect x="80" y="80" width="864" height="864" rx="180" fill="var(--mdlens-icon-inner)" />
 
       {/* Document */}
       <path
@@ -96,11 +80,7 @@ const MDLensIcon: React.FC<MDLensIconProps> = ({
       />
 
       {/* Raw markdown side */}
-      <g
-        fontFamily="'SFMono-Regular', Menlo, Consolas, monospace"
-        fontSize="27"
-        fill="var(--mdlens-icon-ink)"
-      >
+      <g fontFamily="'SFMono-Regular', Menlo, Consolas, monospace" fontSize="27" fill="var(--mdlens-icon-ink)">
         <text x="310" y="425">
           # Heading
         </text>

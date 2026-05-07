@@ -7,6 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "lint:staged": "lint-staged",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "lint:format:all": "npm run lint:fix && npm run format && npm run typecheck",
+    "prepare": "husky",
     "postinstall": "node scripts/patch-next-themes.mjs"
   },
   "dependencies": {
@@ -33,6 +40,7 @@
     "shiki": "^4.0.2"
   },
   "devDependencies": {
+    "@eslint/css": "^0.14.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -40,7 +48,22 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.7.4",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{js,jsx,ts,tsx,css,scss,md,mdx,json,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
