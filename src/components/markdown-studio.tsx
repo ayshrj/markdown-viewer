@@ -85,8 +85,8 @@ type SpeechSentenceSegment = {
 
 type PreviewReadPopoverState = {
   text: string;
-  start: number;
-  end: number;
+  start: number | null;
+  end: number | null;
   left: number;
   top: number;
 };
@@ -254,6 +254,8 @@ export function MarkdownStudio() {
   const ttsHighlightIcon = ttsHighlightMode === "sentence" ? List : Type;
   const ttsHighlightLabel =
     ttsHighlightMode === "sentence" ? "TTS highlight mode: Sentence" : "TTS highlight mode: Word";
+  const canReadPreviewSelection =
+    previewReadPopover !== null && previewReadPopover.start !== null && previewReadPopover.end !== null;
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
@@ -1141,6 +1143,10 @@ export function MarkdownStudio() {
 
   function startTtsFromPreviewSelection(readMode: TtsReadMode) {
     if (!previewReadPopover || !canStartBrowserTts()) return;
+    if (previewReadPopover.start === null || previewReadPopover.end === null) {
+      setToast("That selection cannot be read");
+      return;
+    }
 
     const preview = previewScrollRef.current;
     const speechText = preview
@@ -1359,18 +1365,12 @@ export function MarkdownStudio() {
 
       const speechSelection =
         getSpeechSelectionFromRange(preview, range) ?? getSpeechSelectionFromSelectedText(preview, selectedText);
-
-      if (!speechSelection) {
-        setPreviewReadPopover(null);
-        return;
-      }
-
       const position = getSelectionPopoverPosition(range);
 
       setPreviewReadPopover({
-        text: speechSelection.text,
-        start: speechSelection.start,
-        end: speechSelection.end,
+        text: speechSelection?.text ?? selectedText,
+        start: speechSelection?.start ?? null,
+        end: speechSelection?.end ?? null,
         left: position.left,
         top: position.top,
       });
@@ -1385,6 +1385,11 @@ export function MarkdownStudio() {
 
     previewSelectionTimeoutRef.current = window.setTimeout(showPreviewReadPopover, 80);
   }, [showPreviewReadPopover]);
+
+  const hidePreviewReadPopoverIfSelectionCleared = useCallback(() => {
+    if (window.getSelection()?.toString().trim()) return;
+    setPreviewReadPopover(null);
+  }, []);
 
   useEffect(() => {
     if (!showPreview) {
@@ -2038,7 +2043,7 @@ export function MarkdownStudio() {
                   ref={previewScrollRef}
                   onMouseUp={schedulePreviewReadPopover}
                   onTouchEnd={schedulePreviewReadPopover}
-                  onScroll={() => setPreviewReadPopover(null)}
+                  onScroll={hidePreviewReadPopoverIfSelectionCleared}
                   style={{ fontSize: `${fontSize}px` }}
                   className={cn("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
@@ -2130,7 +2135,8 @@ export function MarkdownStudio() {
               variant="outline"
               size="sm"
               onClick={() => startTtsFromPreviewSelection("document")}
-              className="h-7 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+              disabled={!canReadPreviewSelection}
+              className="h-7 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-45"
             >
               Start from here
             </Button>
@@ -2139,7 +2145,8 @@ export function MarkdownStudio() {
               variant="outline"
               size="sm"
               onClick={() => startTtsFromPreviewSelection("selection")}
-              className="h-7 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 text-xs font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)]"
+              disabled={!canReadPreviewSelection}
+              className="h-7 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 text-xs font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)] disabled:cursor-not-allowed disabled:opacity-45"
             >
               Read selection
             </Button>
