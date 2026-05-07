@@ -1,5 +1,27 @@
+import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { MarkdownStudio } from "@/components/markdown-studio";
-import { SITE_DESCRIPTION, SITE_ICON_PATH, SITE_NAME, SITE_URL } from "@/lib/site";
+import {
+  ACTIVE_DOCUMENT_TITLE_COOKIE,
+  SITE_DESCRIPTION,
+  SITE_ICON_PATH,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const cookieStore = await cookies();
+  const filename = getFilenameFromCookie(
+    cookieStore.get(ACTIVE_DOCUMENT_TITLE_COOKIE)?.value
+  );
+
+  return {
+    title: {
+      absolute: filename ? `${filename} - ${SITE_NAME}` : SITE_TITLE,
+    },
+  };
+}
 
 export default function Home() {
   const jsonLd = {
@@ -27,4 +49,20 @@ export default function Home() {
       <MarkdownStudio />
     </>
   );
+}
+
+function getFilenameFromCookie(value: string | undefined): string | null {
+  if (!value) return null;
+
+  let decodedValue = value;
+  try {
+    decodedValue = decodeURIComponent(value);
+  } catch {
+    decodedValue = value;
+  }
+
+  const filename = decodedValue.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (!filename) return null;
+
+  return filename.slice(0, 140);
 }

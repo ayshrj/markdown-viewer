@@ -45,7 +45,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
-import { SITE_NAME } from "@/lib/site";
+import { ACTIVE_DOCUMENT_TITLE_COOKIE, SITE_NAME } from "@/lib/site";
 import type { ThemeMode } from "@/types/markdown";
 import { useScreenSize } from "@/hooks/use-screen-size";
 
@@ -99,7 +99,7 @@ export function MarkdownStudio() {
   const renamePopoverRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
-  const savedAtRef = useRef<number>(Date.now());
+  const savedAtRef = useRef<number>(0);
   const { setTheme, theme } = useTheme();
 
   const [documents, setDocuments] = useState<SessionDocument[]>(() => [
@@ -130,7 +130,6 @@ export function MarkdownStudio() {
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [replaceQuery, setReplaceQuery] = useState("");
-  const [findMatchCount, setFindMatchCount] = useState(0);
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
@@ -154,6 +153,7 @@ export function MarkdownStudio() {
   const showEditor = viewMode === "split" || viewMode === "edit";
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
+  const findMatchCount = getFindMatchCount(findQuery, source);
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(
@@ -168,24 +168,16 @@ export function MarkdownStudio() {
     },
     []
   );
-
-  useEffect(() => {
-    if (!findQuery.trim()) {
-      setFindMatchCount(0);
-      return;
-    }
-    try {
-      const regex = new RegExp(escapeRegex(findQuery), "gi");
-      const matches = source.match(regex);
-      setFindMatchCount(matches?.length ?? 0);
-    } catch {
-      setFindMatchCount(0);
-    }
-  }, [findQuery, source]);
+  const openFilePicker = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const openFilePickerFromSheet = useCallback(() => {
+    fileInputRef.current?.click();
+    setMobileSheetOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!mounted) return;
-    setSavedStatus("unsaved");
     const timeout = window.setTimeout(() => {
       setSavedStatus("saved");
       savedAtRef.current = Date.now();
@@ -304,10 +296,26 @@ export function MarkdownStudio() {
       window.localStorage.removeItem(STORAGE_KEYS.filename);
     }
   }, [activeDocumentId, documents, filename, mounted, source, updatedAt]);
+
   useEffect(() => {
+    if (!mounted) return;
     const trimmedName = filename?.trim();
-    document.title = trimmedName ? `${trimmedName} – ${SITE_NAME}` : SITE_NAME;
-  }, [activeDocumentId, filename]);
+    const pageTitle = getDocumentPageTitle(trimmedName);
+    syncActiveDocumentTitleCookie(trimmedName);
+    document.title = pageTitle;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      document.title = pageTitle;
+    });
+    const timeout = window.setTimeout(() => {
+      document.title = pageTitle;
+    }, 100);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [filename, mounted]);
 
   useEffect(() => {
     if (mounted) window.localStorage.setItem(STORAGE_KEYS.viewMode, viewMode);
@@ -402,6 +410,7 @@ export function MarkdownStudio() {
 
   function updateSource(nextSource: string) {
     const nextUpdatedAt = Date.now();
+    setSavedStatus("unsaved");
     setDocuments((currentDocuments) =>
       currentDocuments.map((document) =>
         document.id === activeDocumentId
@@ -801,7 +810,7 @@ export function MarkdownStudio() {
                 <IconButton
                   icon={Upload}
                   label="Upload file"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openFilePicker}
                 />
                 <IconButton
                   icon={FilePlus}
@@ -934,7 +943,7 @@ export function MarkdownStudio() {
                   <MobileSheetRow
                     icon={Upload}
                     label="Upload file"
-                    onClick={sheetAction(() => fileInputRef.current?.click())}
+                    onClick={openFilePickerFromSheet}
                   />
                   <MobileSheetRow
                     icon={FilePlus}
@@ -1872,6 +1881,32 @@ function normalizeDocumentFilename(value: string): string {
   return isAcceptedMarkdownPath(trimmedValue)
     ? trimmedValue
     : `${trimmedValue}.md`;
+}
+
+function getDocumentPageTitle(filename: string | undefined): string {
+  return filename ? `${filename} - ${SITE_NAME}` : SITE_NAME;
+}
+
+function syncActiveDocumentTitleCookie(filename: string | undefined) {
+  const baseCookie = `${ACTIVE_DOCUMENT_TITLE_COOKIE}=`;
+  if (!filename) {
+    document.cookie = `${baseCookie}; Max-Age=0; Path=/; SameSite=Lax`;
+    return;
+  }
+
+  document.cookie = `${baseCookie}${encodeURIComponent(
+    filename.slice(0, 140)
+  )}; Max-Age=31536000; Path=/; SameSite=Lax`;
+}
+
+function getFindMatchCount(query: string, source: string): number {
+  if (!query.trim()) return 0;
+  try {
+    const regex = new RegExp(escapeRegex(query), "gi");
+    return source.match(regex)?.length ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 function reorderDocuments(

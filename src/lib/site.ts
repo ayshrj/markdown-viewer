@@ -1,5 +1,6 @@
 export const SITE_NAME = "MDLens";
 export const SITE_TITLE = "MDLens";
+export const ACTIVE_DOCUMENT_TITLE_COOKIE = "mdlens_active_document_title";
 
 export const SITE_DESCRIPTION =
   "A focused markdown reader for multi-file sessions, outline navigation, themes, math, Mermaid diagrams, and syntax-highlighted code.";
