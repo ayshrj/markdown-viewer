@@ -56,6 +56,11 @@ type SessionDocument = {
   updatedAt: number;
 };
 
+type FindMatch = {
+  start: number;
+  end: number;
+};
+
 const STORAGE_KEYS = {
   source: "markdown-reader:source",
   filename: "markdown-reader:filename",
@@ -87,6 +92,7 @@ const DOCUMENT_DRAG_TYPE = "application/x-mdlens-document-id";
 const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 22;
 const FONT_SIZE_DEFAULT = 15;
+const FIND_DEBOUNCE_MS = 180;
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,8 +127,13 @@ export function MarkdownStudio() {
   const [wordGoal, setWordGoal] = useState(0);
   const [zenMode, setZenMode] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [findInput, setFindInput] = useState("");
   const [findQuery, setFindQuery] = useState("");
+  const [findMatches, setFindMatches] = useState<FindMatch[]>([]);
+  const [findSearching, setFindSearching] = useState(false);
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
   const [replaceQuery, setReplaceQuery] = useState("");
+  const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
@@ -138,7 +149,9 @@ export function MarkdownStudio() {
   const showEditor = viewMode === "split" || viewMode === "edit";
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
-  const findMatchCount = getFindMatchCount(findQuery, source);
+  const findPending = findOpen && (findSearching || findInput !== findQuery);
+  const findMatchCount = findMatches.length;
+  const activeFindPosition = findMatchCount ? Math.min(activeFindIndex + 1, findMatchCount) : 0;
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
@@ -175,6 +188,55 @@ export function MarkdownStudio() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [zenMode]);
+
+  useEffect(() => {
+    if (!findOpen) {
+      setFindSearching(false);
+      return;
+    }
+    if (!findInput.trim()) {
+      setFindQuery("");
+      setFindMatches([]);
+      setFindSearching(false);
+      return;
+    }
+    setFindSearching(true);
+    const timeout = window.setTimeout(() => {
+      setFindQuery(findInput);
+      setFindMatches(getFindMatches(findInput, source, findCaseSensitive));
+      setFindSearching(false);
+    }, FIND_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [findCaseSensitive, findInput, findOpen, source]);
+
+  useEffect(() => {
+    setActiveFindIndex(0);
+  }, [activeDocumentId, findQuery]);
+
+  useEffect(() => {
+    if (!findMatchCount) {
+      setActiveFindIndex(0);
+      return;
+    }
+    setActiveFindIndex(index => Math.min(index, findMatchCount - 1));
+  }, [findMatchCount]);
+
+  useEffect(() => {
+    if (!findOpen || !showEditor || !findMatchCount) return;
+    const textarea = textareaRef.current;
+    const match = findMatches[activeFindIndex] ?? findMatches[0];
+    if (!textarea || !match) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      textarea.setSelectionRange(match.start, match.end);
+      scrollTextareaSelectionIntoView(textarea, match.start);
+      if (!isFindBarTarget(document.activeElement)) {
+        textarea.focus({ preventScroll: true });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeFindIndex, findMatchCount, findMatches, findOpen, showEditor]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -578,19 +640,42 @@ export function MarkdownStudio() {
     setTheme(nextTheme);
   }
 
+  function closeFind() {
+    setFindOpen(false);
+    setFindInput("");
+    setFindQuery("");
+    setFindMatches([]);
+    setFindSearching(false);
+    setActiveFindIndex(0);
+  }
+
+  function moveFindSelection(direction: 1 | -1) {
+    if (findPending || !findMatchCount) return;
+    setActiveFindIndex(index => (index + direction + findMatchCount) % findMatchCount);
+  }
+
   function handleFindKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
-      setFindOpen(false);
-      setFindQuery("");
+      closeFind();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      moveFindSelection(event.shiftKey ? -1 : 1);
     }
   }
 
   function applyReplace() {
-    if (!findQuery.trim()) return;
+    if (findPending || !findQuery.trim()) return;
     try {
-      const regex = new RegExp(escapeRegex(findQuery), "g");
+      const flags = findCaseSensitive ? "g" : "gi";
+      const regex = new RegExp(escapeRegex(findQuery), flags);
       const nextSource = source.replace(regex, replaceQuery);
       updateSource(nextSource);
+      setFindQuery("");
+      setFindMatches([]);
+      setFindSearching(true);
+      setActiveFindIndex(0);
       setToast("Replaced all matches");
     } catch {
       setToast("Replace failed");
@@ -932,12 +1017,15 @@ export function MarkdownStudio() {
           </div>
 
           {findOpen && (
-            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2">
+            <div
+              data-find-bar="true"
+              className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2"
+            >
               <Search aria-hidden size={13} className="shrink-0 text-[var(--muted-soft)]" />
               <input
                 autoFocus
-                value={findQuery}
-                onChange={e => setFindQuery(e.target.value)}
+                value={findInput}
+                onChange={e => setFindInput(e.target.value)}
                 onKeyDown={handleFindKeyDown}
                 placeholder="Find…"
                 aria-label="Find text"
@@ -952,26 +1040,75 @@ export function MarkdownStudio() {
                 className="h-7 min-w-[120px] flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
               />
               <span className="shrink-0 text-xs text-[var(--muted-soft)]">
-                {findQuery ? `${findMatchCount} match${findMatchCount !== 1 ? "es" : ""}` : ""}
+                {findInput
+                  ? findPending
+                    ? "Searching..."
+                    : findMatchCount
+                      ? `${activeFindPosition} / ${findMatchCount}`
+                      : "No matches"
+                  : ""}
               </span>
-              <button
+              {findPending ? (
+                <span
+                  aria-hidden
+                  className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--line-strong)] border-t-[var(--accent)]"
+                />
+              ) : null}
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                aria-pressed={findCaseSensitive}
+                title={findCaseSensitive ? "Case-sensitive find" : "Case-insensitive find"}
+                onClick={() => setFindCaseSensitive(value => !value)}
+                className={cx(
+                  "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
+                  findCaseSensitive
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
+                    : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                )}
+              >
+                Aa
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => moveFindSelection(-1)}
+                disabled={findPending || !findMatchCount}
+                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => moveFindSelection(1)}
+                disabled={findPending || !findMatchCount}
+                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={applyReplace}
-                disabled={!findQuery.trim() || findMatchCount === 0}
-                className="h-7 shrink-0 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-3 text-xs font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)] disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={findPending || !findQuery.trim() || findMatchCount === 0}
+                className="h-7 shrink-0 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-3 text-xs font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Replace all
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={() => {
-                  setFindOpen(false);
-                  setFindQuery("");
-                }}
-                className="h-7 shrink-0 rounded-md border border-[var(--line)] px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                variant="outline"
+                size="sm"
+                onClick={closeFind}
+                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
               >
                 Close
-              </button>
+              </Button>
             </div>
           )}
 
@@ -1608,14 +1745,28 @@ function syncActiveDocumentTitleCookie(filename: string | undefined) {
   )}; Max-Age=31536000; Path=/; SameSite=Lax`;
 }
 
-function getFindMatchCount(query: string, source: string): number {
-  if (!query.trim()) return 0;
+function getFindMatches(query: string, source: string, caseSensitive: boolean): FindMatch[] {
+  if (!query.trim()) return [];
   try {
-    const regex = new RegExp(escapeRegex(query), "gi");
-    return source.match(regex)?.length ?? 0;
+    const regex = new RegExp(escapeRegex(query), caseSensitive ? "g" : "gi");
+    const matches: FindMatch[] = [];
+    for (const match of source.matchAll(regex)) {
+      if (typeof match.index !== "number") continue;
+      matches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+      });
+    }
+    return matches;
   } catch {
-    return 0;
+    return [];
   }
+}
+
+function scrollTextareaSelectionIntoView(textarea: HTMLTextAreaElement, selectionStart: number) {
+  const lineIndex = textarea.value.slice(0, selectionStart).split("\n").length - 1;
+  const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight) || 24;
+  textarea.scrollTop = Math.max(0, (lineIndex - 3) * lineHeight);
 }
 
 function reorderDocuments(
@@ -1742,6 +1893,10 @@ function normalizeWheelDelta(event: WheelEvent): number {
 function isEditableWheelTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+}
+
+function isFindBarTarget(target: Element | null): boolean {
+  return Boolean(target?.closest("[data-find-bar='true']"));
 }
 
 function isInsideElement(target: EventTarget | null, element: Element | null): boolean {
