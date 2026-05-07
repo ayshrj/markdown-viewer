@@ -1,13 +1,13 @@
 export const SAMPLE_MARKDOWN = `---
-title: Field Notes for a Better Markdown Reader
-author: Markdown Reader Studio
+title: Field Notes for MDLens
+author: MDLens
 tags:
   - markdown
   - preview
   - diagrams
 ---
 
-# Field Notes for a Better Markdown Reader
+# Field Notes for MDLens
 
 Paste markdown, drop a file, or edit this sample. The preview supports **GFM**, math, diagrams, raw HTML that is sanitized, and syntax-highlighted code.
 

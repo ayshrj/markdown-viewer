@@ -4,9 +4,9 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "Markdown Reader Studio",
+  title: "MDLens",
   description:
-    "A mobile-safe markdown viewer with themes, uploads, outline navigation, math, diagrams, and syntax highlighting.",
+    "A focused markdown reader with multi-file sessions, outline navigation, themes, math, diagrams, and syntax highlighting.",
 };
 
 export default function RootLayout({

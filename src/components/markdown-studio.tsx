@@ -566,7 +566,7 @@ export function MarkdownStudio() {
       <section className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1180px] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]">
         <header className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2.5">
           <h1 className="mr-auto text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
-            Markdown
+            MDLens
           </h1>
 
           <div className="flex rounded-lg bg-[var(--panel-sunken)] p-0.5">

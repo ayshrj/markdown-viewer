@@ -1,6 +1,6 @@
-# Markdown Reader Studio
+# MDLens
 
-A Next.js markdown viewer with a split editor/preview layout, mobile tabs, local file upload, theme controls, document outline, stats, math, diagrams, sanitized HTML, and syntax highlighting.
+A Next.js markdown reader with split/edit/read modes, multi-file sessions, local file upload, theme controls, document outline, stats, math, diagrams, sanitized HTML, and syntax highlighting.
 
 ## Run
 

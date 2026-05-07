@@ -36,7 +36,7 @@ function StartupLoader() {
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--bg)] p-6 text-[var(--text)]">
       <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-5 py-4 text-sm shadow-sm">
-        <p className="font-bold">Loading Markdown</p>
+        <p className="font-bold">Loading MDLens</p>
         <p className="mt-1 text-xs text-[var(--muted)]">Preparing your theme...</p>
       </div>
     </main>
