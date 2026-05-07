@@ -1,5 +1,5 @@
 export const SITE_URL = normalizeSiteUrl(
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://mdlens.app"
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://mdlens.vercel.app"
 );
 
 export const SITE_NAME = "MDLens";
