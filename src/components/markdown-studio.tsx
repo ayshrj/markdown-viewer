@@ -5,6 +5,7 @@ import type {
   DragEvent as ReactDragEvent,
   MouseEvent,
   PointerEvent,
+  SyntheticEvent,
 } from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   FileText,
   Monitor,
   Moon,
+  Pencil,
   RefreshCcw,
   Sun,
   Trash2,
@@ -67,6 +69,7 @@ export function MarkdownStudio() {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const sourcePaneRef = useRef<HTMLElement>(null);
   const previewScrollRef = useRef<HTMLElement>(null);
+  const renamePopoverRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const { setTheme, theme } = useTheme();
@@ -85,6 +88,8 @@ export function MarkdownStudio() {
   const [dropTargetDocumentId, setDropTargetDocumentId] = useState<
     string | null
   >(null);
+  const [renamePopoverOpen, setRenamePopoverOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const activeDocument = getActiveDocument(documents, activeDocumentId);
@@ -276,6 +281,36 @@ export function MarkdownStudio() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    if (!renamePopoverOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: globalThis.PointerEvent) {
+      if (
+        renamePopoverRef.current &&
+        event.target instanceof Node &&
+        !renamePopoverRef.current.contains(event.target)
+      ) {
+        setRenamePopoverOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setRenamePopoverOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [renamePopoverOpen]);
+
   function updateSource(nextSource: string) {
     const nextUpdatedAt = Date.now();
 
@@ -427,6 +462,32 @@ export function MarkdownStudio() {
     setToast("Cleared current document");
   }
 
+  function openRenamePopover() {
+    setRenameValue(activeDocument.filename?.trim() || "Untitled 1.md");
+    setRenamePopoverOpen(true);
+  }
+
+  function renameActiveDocument(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+    event.preventDefault();
+
+    const nextFilename = normalizeDocumentFilename(renameValue);
+
+    if (!nextFilename) {
+      setToast("Name cannot be empty");
+      return;
+    }
+
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((document) =>
+        document.id === activeDocumentId
+          ? { ...document, filename: nextFilename, updatedAt: Date.now() }
+          : document
+      )
+    );
+    setRenamePopoverOpen(false);
+    setToast("Renamed document");
+  }
+
   function createBlankDocument() {
     const document = createDocument("", getNextUntitledFilename(documents));
 
@@ -536,6 +597,7 @@ export function MarkdownStudio() {
     }
 
     setActiveDocumentId(linkedDocument.id);
+    setRenamePopoverOpen(false);
 
     if (hash) {
       window.setTimeout(() => scrollPreviewToHeading(hash), 80);
@@ -711,9 +773,9 @@ export function MarkdownStudio() {
           />
         </header>
 
-        <div className="document-strip border-b border-[var(--line)] bg-[var(--panel)] px-3 py-2">
+        <div className="document-strip flex items-center gap-2 border-b border-[var(--line)] bg-[var(--panel)] px-3 py-2">
           <div
-            className="flex gap-1.5 overflow-x-auto"
+            className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto"
             aria-label="Open markdown documents"
           >
             {documents.map((document, index) => (
@@ -741,7 +803,10 @@ export function MarkdownStudio() {
               >
                 <button
                   type="button"
-                  onClick={() => setActiveDocumentId(document.id)}
+                  onClick={() => {
+                    setActiveDocumentId(document.id);
+                    setRenamePopoverOpen(false);
+                  }}
                   className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
                   title={getDocumentLabel(document, index)}
                   aria-current={
@@ -762,6 +827,51 @@ export function MarkdownStudio() {
                 </button>
               </div>
             ))}
+          </div>
+          <div ref={renamePopoverRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={openRenamePopover}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+              aria-expanded={renamePopoverOpen}
+              aria-haspopup="dialog"
+            >
+              <Pencil aria-hidden size={13} />
+              Rename
+            </button>
+            {renamePopoverOpen ? (
+              <form
+                onSubmit={renameActiveDocument}
+                className="absolute right-0 top-10 z-20 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+                role="dialog"
+                aria-label="Rename active markdown document"
+              >
+                <label className="block font-bold uppercase tracking-[0.08em] text-[var(--muted-soft)]">
+                  Document name
+                </label>
+                <input
+                  value={renameValue}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2.5 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                  autoFocus
+                />
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRenamePopoverOpen(false)}
+                    className="rounded-md border border-[var(--line)] px-2.5 py-1.5 font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1.5 font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)]"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         </div>
 
@@ -1013,6 +1123,18 @@ function getNextUntitledFilename(documents: SessionDocument[]): string {
   }
 
   return `Untitled ${nextNumber}.md`;
+}
+
+function normalizeDocumentFilename(value: string): string {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return isAcceptedMarkdownPath(trimmedValue)
+    ? trimmedValue
+    : `${trimmedValue}.md`;
 }
 
 function reorderDocuments(
