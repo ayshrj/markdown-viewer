@@ -4,6 +4,8 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 
 import { CopyButton } from "@/components/copy-button";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toCodeFenceLanguage } from "@/lib/code-language";
 import { detectLanguageWithScoring } from "@/lib/detect-language-with-scoring";
 
@@ -101,25 +103,38 @@ export function HighlightedCode({ code, fenceStartOffset, language, onLanguageSe
           {canApplyDetectedLanguage ? (
             <>
               <span className="tracking-normal text-[var(--muted-soft)] normal-case">Detected</span>
-              <select
-                aria-label="Detected code language candidates"
-                className="min-h-8 max-w-44 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-                onChange={event => setSelectedDetectedLanguage(event.target.value)}
-                title="Choose a language candidate"
-                value={selectedLanguageToApply}
-              >
-                {detectedLanguages.map(candidate => {
-                  const candidateLanguage = toCodeFenceLanguage(candidate.language);
-                  return (
-                    <option key={candidate.language} value={candidateLanguage}>
-                      {candidate.language} · {candidate.confidence} · {candidate.score}
-                    </option>
-                  );
-                })}
-              </select>
-              <button
+              <Select onValueChange={setSelectedDetectedLanguage} value={selectedLanguageToApply}>
+                <SelectTrigger
+                  aria-label="Detected code language candidates"
+                  size="sm"
+                  title="Choose a language candidate"
+                  className="min-h-8 max-w-44 rounded-md border-[var(--line-strong)] bg-[var(--panel)] px-2 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] focus-visible:border-[var(--accent)] focus-visible:ring-[var(--accent)]/20"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent
+                  align="end"
+                  className="border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--text)]"
+                >
+                  {detectedLanguages.map(candidate => {
+                    const candidateLanguage = toCodeFenceLanguage(candidate.language);
+                    return (
+                      <SelectItem
+                        key={candidate.language}
+                        value={candidateLanguage}
+                        className="text-xs focus:bg-[var(--panel-sunken)] focus:text-[var(--text)]"
+                      >
+                        {candidate.language} · {candidate.confidence} · {candidate.score}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Button
                 type="button"
-                className="inline-flex min-h-8 items-center rounded-md border border-[var(--line-strong)] px-2.5 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                variant="outline"
+                size="sm"
+                className="min-h-8 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
                 disabled={!selectedLanguageToApply}
                 onClick={() => {
                   if (!selectedLanguageToApply) return;
@@ -128,7 +143,7 @@ export function HighlightedCode({ code, fenceStartOffset, language, onLanguageSe
                 title="Write this language into the markdown source fence"
               >
                 Apply
-              </button>
+              </Button>
             </>
           ) : null}
           <CopyButton copied={copied} onClick={copyCode} />

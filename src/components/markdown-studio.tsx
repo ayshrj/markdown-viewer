@@ -37,6 +37,9 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
@@ -91,7 +94,6 @@ export function MarkdownStudio() {
   const sourcePaneRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewScrollRef = useRef<HTMLElement>(null);
-  const renamePopoverRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const savedAtRef = useRef<number>(0);
@@ -326,28 +328,6 @@ export function MarkdownStudio() {
     const timeout = window.setTimeout(() => setToast(null), 1800);
     return () => window.clearTimeout(timeout);
   }, [toast]);
-
-  useEffect(() => {
-    if (!renamePopoverOpen) return;
-    function handlePointerDown(event: globalThis.PointerEvent) {
-      if (
-        renamePopoverRef.current &&
-        event.target instanceof Node &&
-        !renamePopoverRef.current.contains(event.target)
-      ) {
-        setRenamePopoverOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setRenamePopoverOpen(false);
-    }
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [renamePopoverOpen]);
 
   function updateSource(nextSource: string) {
     const nextUpdatedAt = Date.now();
@@ -689,24 +669,19 @@ export function MarkdownStudio() {
 
               <div className="mx-2 h-5 w-px bg-[var(--line)]" />
 
-              <div className="flex rounded-lg bg-[var(--panel-sunken)] p-0.5">
-                {VIEW_MODES.map(mode => (
-                  <button
-                    key={mode.value}
-                    type="button"
-                    onClick={() => setViewMode(mode.value)}
-                    className={cx(
-                      "rounded-md px-2.5 py-1 text-xs font-bold transition sm:px-3",
-                      viewMode === mode.value
-                        ? "border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--text)]"
-                        : "text-[var(--muted)] hover:text-[var(--text)]"
-                    )}
-                    aria-pressed={viewMode === mode.value}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
+              <Tabs value={viewMode} onValueChange={value => setViewMode(value as ViewMode)}>
+                <TabsList className="h-auto rounded-lg bg-[var(--panel-sunken)] p-0.5 text-[var(--muted)]">
+                  {VIEW_MODES.map(mode => (
+                    <TabsTrigger
+                      key={mode.value}
+                      value={mode.value}
+                      className="rounded-md border border-transparent px-2.5 py-1 text-xs font-bold data-active:border-[var(--line-strong)] data-active:bg-[var(--panel)] data-active:text-[var(--text)] data-active:shadow-none sm:px-3"
+                    >
+                      {mode.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
 
               <div className="mx-2 hidden h-5 w-px bg-[var(--line)] sm:block" />
 
@@ -779,14 +754,16 @@ export function MarkdownStudio() {
                 />
                 <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
 
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setMobileSheetOpen(true)}
                   aria-label="More actions"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                  className="h-8 w-8 rounded-md bg-transparent text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
                 >
                   <MoreHorizontal aria-hidden size={15} />
-                </button>
+                </Button>
               </div>
 
               <MobileToolbarSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)}>
@@ -836,14 +813,16 @@ export function MarkdownStudio() {
 
           {zenMode && (
             <div className="flex items-center justify-end border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setZenMode(false)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--muted)] transition hover:text-[var(--text)]"
+                className="h-auto gap-1.5 bg-transparent px-2 py-1 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
               >
                 <Minimize2 aria-hidden size={12} />
                 Exit Zen
-              </button>
+              </Button>
             </div>
           )}
 
@@ -893,24 +872,32 @@ export function MarkdownStudio() {
                 </div>
               ))}
             </div>
-            <div ref={renamePopoverRef} className="relative shrink-0">
-              <button
-                type="button"
-                onClick={openRenamePopover}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-                aria-expanded={renamePopoverOpen}
-                aria-haspopup="dialog"
-              >
-                <Pencil aria-hidden size={13} />
-                Rename
-              </button>
-              {renamePopoverOpen ? (
-                <form
-                  onSubmit={renameActiveDocument}
-                  className="absolute top-10 right-0 z-20 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
-                  role="dialog"
-                  aria-label="Rename active markdown document"
+            <Popover
+              open={renamePopoverOpen}
+              onOpenChange={open => {
+                if (open) {
+                  openRenamePopover();
+                  return;
+                }
+                setRenamePopoverOpen(false);
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-8 shrink-0 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
                 >
+                  <Pencil aria-hidden size={13} />
+                  Rename
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+              >
+                <form onSubmit={renameActiveDocument} role="dialog" aria-label="Rename active markdown document">
                   <label className="block font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
                     Document name
                   </label>
@@ -921,23 +908,27 @@ export function MarkdownStudio() {
                     autoFocus
                   />
                   <div className="mt-3 flex justify-end gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => setRenamePopoverOpen(false)}
-                      className="rounded-md border border-[var(--line)] px-2.5 py-1.5 font-bold text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                      className="rounded-md border-[var(--line)] bg-transparent px-2.5 py-1.5 font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="submit"
-                      className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1.5 font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)]"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1.5 font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)]"
                     >
                       Save
-                    </button>
+                    </Button>
                   </div>
                 </form>
-              ) : null}
-            </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {findOpen && (
@@ -1190,14 +1181,16 @@ function IconButton({
   variant?: "default" | "danger";
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onClick={onClick}
       aria-label={label}
       title={label}
       aria-pressed={active}
       className={cx(
-        "relative inline-flex h-8 w-8 items-center justify-center rounded-md transition",
+        "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
         active
           ? "bg-[var(--accent-soft)] text-[var(--accent)]"
           : variant === "danger"
@@ -1206,7 +1199,7 @@ function IconButton({
       )}
     >
       <Icon aria-hidden size={15} />
-    </button>
+    </Button>
   );
 }
 
@@ -1276,93 +1269,81 @@ function MobileSheetRow({
 
 function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: globalThis.PointerEvent) {
-      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-      >
-        <Type aria-hidden size={13} />
-        {fontSize}px
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Font size"
-          className="absolute top-10 right-0 z-20 w-52 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
         >
-          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Font size</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel-sunken)]"
-              aria-label="Decrease font size"
-            >
-              −
-            </button>
-            <input
-              type="range"
-              min={FONT_SIZE_MIN}
-              max={FONT_SIZE_MAX}
-              step={1}
-              value={fontSize}
-              onChange={e => onChange(Number(e.target.value))}
-              className="flex-1 accent-[var(--accent)]"
-              aria-label="Font size slider"
-            />
-            <button
-              type="button"
-              onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel-sunken)]"
-              aria-label="Increase font size"
-            >
-              +
-            </button>
-          </div>
-          <div className="mt-2 flex justify-between text-[0.68rem] text-[var(--muted-soft)]">
-            <span>{FONT_SIZE_MIN}px</span>
-            <span className="font-bold text-[var(--text)]">{fontSize}px</span>
-            <span>{FONT_SIZE_MAX}px</span>
-          </div>
-          <button
+          <Type aria-hidden size={13} />
+          {fontSize}px
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-52 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        role="dialog"
+        aria-label="Font size"
+      >
+        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Font size</p>
+        <div className="flex items-center gap-2">
+          <Button
             type="button"
-            onClick={() => onChange(FONT_SIZE_DEFAULT)}
-            className="mt-2 w-full rounded-md border border-[var(--line)] py-1 text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
+            className="h-7 w-7 rounded-md border-[var(--line)] bg-transparent text-sm font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)]"
+            aria-label="Decrease font size"
           >
-            Reset to default ({FONT_SIZE_DEFAULT}px)
-          </button>
+            −
+          </Button>
+          <input
+            type="range"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            step={1}
+            value={fontSize}
+            onChange={e => onChange(Number(e.target.value))}
+            className="flex-1 accent-[var(--accent)]"
+            aria-label="Font size slider"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
+            className="h-7 w-7 rounded-md border-[var(--line)] bg-transparent text-sm font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)]"
+            aria-label="Increase font size"
+          >
+            +
+          </Button>
         </div>
-      )}
-    </div>
+        <div className="mt-2 flex justify-between text-[0.68rem] text-[var(--muted-soft)]">
+          <span>{FONT_SIZE_MIN}px</span>
+          <span className="font-bold text-[var(--text)]">{fontSize}px</span>
+          <span>{FONT_SIZE_MAX}px</span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange(FONT_SIZE_DEFAULT)}
+          className="mt-2 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+        >
+          Reset to default ({FONT_SIZE_DEFAULT}px)
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const [customValue, setCustomValue] = useState(String(maxWidth));
-  const ref = useRef<HTMLDivElement>(null);
 
   const PRESETS = [
     { label: "640", value: 640 },
@@ -1370,22 +1351,6 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
     { label: "1180", value: 1180 },
     { label: "Full", value: 99999 },
   ];
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: globalThis.PointerEvent) {
-      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   function applyCustom(e: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     e.preventDefault();
@@ -1397,86 +1362,73 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
   }
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-      >
-        <AlignLeft aria-hidden size={13} />
-        Width
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Set content max width"
-          className="absolute top-10 right-0 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
         >
-          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Max content width</p>
-          <div className="mb-2 grid grid-cols-2 gap-1.5">
-            {PRESETS.map(preset => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={() => {
-                  onChange(preset.value);
-                  setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
-                  setOpen(false);
-                }}
-                className={cx(
-                  "rounded-md border px-2 py-1.5 text-center font-bold transition",
-                  maxWidth === preset.value
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
-                    : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--text)]"
-                )}
-              >
-                {preset.label}
-                {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
-              </button>
-            ))}
-          </div>
-          <form onSubmit={applyCustom} className="flex gap-1.5">
-            <input
-              value={customValue}
-              onChange={e => setCustomValue(e.target.value)}
-              placeholder="e.g. 960"
-              className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-            />
-            <button
-              type="submit"
-              className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)]"
+          <AlignLeft aria-hidden size={13} />
+          Width
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        role="dialog"
+        aria-label="Set content max width"
+      >
+        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Max content width</p>
+        <div className="mb-2 grid grid-cols-2 gap-1.5">
+          {PRESETS.map(preset => (
+            <Button
+              key={preset.value}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onChange(preset.value);
+                setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
+                setOpen(false);
+              }}
+              className={cx(
+                "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
+                maxWidth === preset.value
+                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
+                  : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:bg-transparent hover:text-[var(--text)]"
+              )}
             >
-              Set
-            </button>
-          </form>
+              {preset.label}
+              {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
+            </Button>
+          ))}
         </div>
-      )}
-    </div>
+        <form onSubmit={applyCustom} className="flex gap-1.5">
+          <input
+            value={customValue}
+            onChange={e => setCustomValue(e.target.value)}
+            placeholder="e.g. 960"
+            className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)]"
+          >
+            Set
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(wordGoal > 0 ? String(wordGoal) : "");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: globalThis.PointerEvent) {
-      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     e.preventDefault();
@@ -1495,85 +1447,94 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
   const QUICK_GOALS = [100, 250, 500, 1000];
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => {
-          setInputValue(wordGoal > 0 ? String(wordGoal) : "");
-          setOpen(o => !o);
-        }}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className={cx(
-          "inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap transition",
-          wordGoal > 0
-            ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
-            : "border-[var(--line-strong)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
-        )}
-      >
-        <Target aria-hidden size={13} />
-        Goal
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Set word goal"
-          className="absolute top-10 right-0 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs shadow-lg"
+    <Popover
+      open={open}
+      onOpenChange={nextOpen => {
+        if (nextOpen) setInputValue(wordGoal > 0 ? String(wordGoal) : "");
+        setOpen(nextOpen);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cx(
+            "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
+            wordGoal > 0
+              ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
+              : "border-[var(--line-strong)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          )}
         >
-          <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Word goal</p>
-          <div className="mb-2 grid grid-cols-4 gap-1">
-            {QUICK_GOALS.map(g => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => {
-                  onChange(g);
-                  setInputValue(String(g));
-                  setOpen(false);
-                }}
-                className={cx(
-                  "rounded-md border py-1 text-center font-bold transition",
-                  wordGoal === g
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
-                    : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--text)]"
-                )}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          <form onSubmit={handleSubmit} className="flex gap-1.5">
-            <input
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              placeholder="Custom…"
-              type="number"
-              min={1}
-              className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-            />
-            <button
-              type="submit"
-              className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] transition hover:bg-[var(--panel-sunken)]"
-            >
-              Set
-            </button>
-          </form>
-          {wordGoal > 0 && (
-            <button
+          <Target aria-hidden size={13} />
+          Goal
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        role="dialog"
+        aria-label="Set word goal"
+      >
+        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Word goal</p>
+        <div className="mb-2 grid grid-cols-4 gap-1">
+          {QUICK_GOALS.map(g => (
+            <Button
+              key={g}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => {
-                onChange(0);
-                setInputValue("");
+                onChange(g);
+                setInputValue(String(g));
                 setOpen(false);
               }}
-              className="mt-2 w-full rounded-md border border-[var(--line)] py-1 text-[var(--muted)] transition hover:bg-[var(--panel-sunken)] hover:text-[var(--danger)]"
+              className={cx(
+                "rounded-md border py-1 text-center font-bold shadow-none transition",
+                wordGoal === g
+                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
+                  : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:bg-transparent hover:text-[var(--text)]"
+              )}
             >
-              Clear goal
-            </button>
-          )}
+              {g}
+            </Button>
+          ))}
         </div>
-      )}
-    </div>
+        <form onSubmit={handleSubmit} className="flex gap-1.5">
+          <input
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            placeholder="Custom…"
+            type="number"
+            min={1}
+            className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)]"
+          >
+            Set
+          </Button>
+        </form>
+        {wordGoal > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onChange(0);
+              setInputValue("");
+              setOpen(false);
+            }}
+            className="mt-2 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--danger)]"
+          >
+            Clear goal
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
