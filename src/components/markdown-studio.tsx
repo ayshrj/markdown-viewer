@@ -181,7 +181,10 @@ export function MarkdownStudio() {
       STORAGE_KEYS.documents,
       JSON.stringify(documents)
     );
-    window.localStorage.setItem(STORAGE_KEYS.activeDocumentId, activeDocumentId);
+    window.localStorage.setItem(
+      STORAGE_KEYS.activeDocumentId,
+      activeDocumentId
+    );
     window.localStorage.setItem(STORAGE_KEYS.source, source);
     window.localStorage.setItem(STORAGE_KEYS.updatedAt, String(updatedAt));
 
@@ -292,7 +295,10 @@ export function MarkdownStudio() {
       )
     );
 
-    setDocuments((currentDocuments) => [...currentDocuments, ...loadedDocuments]);
+    setDocuments((currentDocuments) => [
+      ...currentDocuments,
+      ...loadedDocuments,
+    ]);
     setActiveDocumentId(loadedDocuments[0].id);
     setToast(
       rejectedCount > 0
@@ -569,11 +575,15 @@ export function MarkdownStudio() {
           <h1 className="mr-auto inline-flex items-center gap-2 text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
             <MDLensIcon
               aria-hidden
-              className="size-5 rounded-[0.35rem]"
+              className="mdlens-icon size-5 rounded-[0.35rem]"
               focusable="false"
+              showSubtitle={false}
               size={20}
             />
-            MDLens
+            <span>
+              <span className="mdlens-wordmark-primary">MD</span>
+              <span className="mdlens-wordmark-accent">Lens</span>
+            </span>
           </h1>
 
           <div className="flex rounded-lg bg-[var(--panel-sunken)] p-0.5">
@@ -876,8 +886,7 @@ function createDocument(
 ): SessionDocument {
   return {
     id:
-      stableId ??
-      `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
+      stableId ?? `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
     source,
     filename,
     updatedAt,
@@ -911,7 +920,9 @@ function documentMatchesFilename(
     return false;
   }
 
-  return normalizeFilename(document.filename) === normalizeFilename(linkedFilename);
+  return (
+    normalizeFilename(document.filename) === normalizeFilename(linkedFilename)
+  );
 }
 
 function getLinkedMarkdownFilename(href: string): string | null {
@@ -1010,7 +1021,8 @@ function isStoredDocument(value: unknown): value is SessionDocument {
   return (
     typeof candidate.id === "string" &&
     typeof candidate.source === "string" &&
-    (candidate.filename === undefined || typeof candidate.filename === "string") &&
+    (candidate.filename === undefined ||
+      typeof candidate.filename === "string") &&
     typeof candidate.updatedAt === "number" &&
     Number.isFinite(candidate.updatedAt)
   );
@@ -1060,9 +1072,7 @@ function isInsideElement(
   target: EventTarget | null,
   element: Element | null
 ): boolean {
-  return Boolean(
-    element && target instanceof Node && element.contains(target)
-  );
+  return Boolean(element && target instanceof Node && element.contains(target));
 }
 
 function clampSplitPercent(value: number) {

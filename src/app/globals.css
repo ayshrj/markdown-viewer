@@ -70,6 +70,23 @@ textarea {
   font: inherit;
 }
 
+.mdlens-icon {
+  --mdlens-icon-bg: var(--bg, #f7f6f2);
+  --mdlens-icon-inner: var(--panel-muted, #fbfaf7);
+  --mdlens-icon-paper: var(--panel, #fffdfc);
+  --mdlens-icon-ink: var(--muted-soft, #263036);
+  --mdlens-icon-rule: var(--line-strong, #d8dadd);
+  --mdlens-icon-accent: var(--accent, #4d86b5);
+}
+
+.mdlens-wordmark-primary {
+  color: var(--muted-soft);
+}
+
+.mdlens-wordmark-accent {
+  color: var(--accent);
+}
+
 ::selection {
   background: var(--accent-soft);
 }
