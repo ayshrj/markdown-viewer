@@ -1,49 +1,40 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreAssembly = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const x86Instructions = [
-    /\bmov\s+/,
-    /\badd\s+/,
-    /\bsub\s+/,
-    /\bmul\s+/,
-    /\bdiv\s+/,
-    /\bjmp\s+/,
-    /\bcall\s+/,
-    /\bret\b/,
-    /\bpush\s+/,
-    /\bpop\s+/,
-    /\bcmp\s+/,
-    /\btest\s+/,
-    /\bjz\s+/,
-    /\bjnz\s+/,
-  ];
-
-  const registers = [/\b[er]?[abcd]x\b/i, /\b[er]?[sb]p\b/i, /\b[er]?[sd]i\b/i, /\brd?\b/i, /\br1[0-5]d?\b/i];
-
-  const asmPatterns = [
-    /^\s*\w+:/m, // Labels
-    /;\s*.*$/m, // Comments
-    /^\s*\.\w+/m, // Directives
-  ];
-
-  const instructionMatches = countMatches(text, x86Instructions);
-  const registerMatches = countMatches(text, registers);
-  const patternMatches = countMatches(text, asmPatterns);
-
-  const score = instructionMatches * 15 + registerMatches * 10 + patternMatches * 12;
-
-  if (instructionMatches > 0) reasons.push(`${instructionMatches} assembly instructions`);
-  if (registerMatches > 0) reasons.push(`${registerMatches} register references`);
-  if (patternMatches > 0) reasons.push(`${patternMatches} assembly patterns`);
-
-  return {
+export const scoreAssembly = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Assembly",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong assembly instructions",
+        points: 18,
+        patterns: [
+          /\b(?:mov|lea|add|sub|imul|idiv|xor|and|or|shl|shr)\s+/i,
+          /\b(?:jmp|je|jne|jz|jnz|jg|jl|call|ret)\b/i,
+          /\b(?:push|pop|cmp|test|nop|int)\b/i,
+          /^\s*(?:section|segment)\s+\.\w+/im,
+          /^\s*(?:global|extern)\s+\w+/im,
+        ],
+      },
+      {
+        label: "medium register/label patterns",
+        points: 10,
+        max: 40,
+        patterns: [
+          /\b(?:e?[abcd]x|e?[sb]p|e?[sd]i|r(?:[0-9]|1[0-5])|rax|rbx|rcx|rdx)\b/i,
+          /^\s*[A-Za-z_.$][\w.$]*:\s*$/m,
+          /;\s*.*$/m,
+          /^\s*\.\w+/m,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "high-level source syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:function|def|class|import|export|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

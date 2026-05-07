@@ -1,39 +1,29 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreINI = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [
-    /^$$.*$$\s*$/m, // Section headers
-    /^\w+\s*=\s*.+$/m, // Key=value pairs
-  ];
-
-  const mediumPatterns = [
-    /^[;#].*$/m, // Comments
-    /^\s*$/m, // Empty lines (structural)
-  ];
-
-  const structure = [
-    /^$$.*$$/m.test(text), // Has sections
-    /^\w+\s*=/m.test(text), // Has key-value pairs
-    !/[{}]/.test(text), // No braces (not JSON/JS)
-  ];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-  const structureScore = structure.filter(Boolean).length;
-
-  const score = strongMatches * 25 + mediumMatches * 10 + structureScore * 15;
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong INI patterns`);
-  if (structureScore > 0) reasons.push(`${structureScore}/3 INI structure checks`);
-
-  return {
+export const scoreINI = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "INI",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong INI patterns",
+        points: 35,
+        patterns: [/^\s*\[[^\]\n]+\]\s*$/m, /^\s*[\w.-]+\s*=\s*.+$/m],
+      },
+      {
+        label: "medium INI patterns",
+        points: 12,
+        max: 36,
+        patterns: [/^\s*[;#].*$/m, /^\s*[\w.-]+\s*:\s*.+$/m, /^\s*\[[^\]\n]+\]\s*\n\s*[\w.-]+\s*=/m],
+      },
+    ],
+    penalties: [
+      {
+        label: "JSON/YAML/source syntax",
+        points: 22,
+        patterns: [/^\s*\{/, /^\s*\[\s*(?:\{|")/, /^\s*-\s+/m, /^\s*(?:const|let|function|def)\b/m, /<\/?\w+[^>]*>/],
+      },
+    ],
+  });

@@ -1,30 +1,43 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreKotlin = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /fun\s+main\s*\(/, // fun main(
-    /fun\s+\w+\s*\(/, // fun name(
-    /val\s+\w+\s*=/, // val variable =
-    /var\s+\w+\s*:/, // var variable: Type
-    /data\s+class\s+\w+/, // data class Name
-    /object\s+\w+/, // object Name
-    /when\s*\(/, // when(
-    /\.let\s*\{/, // .let {
-    /\.also\s*\{/, // .also {
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const penaltyMatches = countMatches(text, ["def ", "function(", "console.log", "printf"]);
-
-  const score = calculateScore(matches, strongPatterns.length, 0, penaltyMatches * 20);
-
-  return {
+export const scoreKotlin = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Kotlin",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Kotlin patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Kotlin patterns",
+        points: 26,
+        patterns: [
+          /\bfun\s+main\s*\(/,
+          /\bfun\s+\w+\s*\([^)]*\)/,
+          /\bval\s+\w+\s*=/,
+          /\bvar\s+\w+\s*:\s*\w+/,
+          /\bdata\s+class\s+\w+/,
+          /\bobject\s+\w+/,
+          /\bwhen\s*\(/,
+        ],
+      },
+      {
+        label: "medium Kotlin patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\bimport\s+kotlin\./,
+          /\bsealed\s+class\b/,
+          /\bcompanion\s+object\b/,
+          /\.\w+\s*\{/,
+          /\bprintln\s*\(/,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Kotlin syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|function|#include|using\s+System|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

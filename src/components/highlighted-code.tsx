@@ -23,7 +23,9 @@ export function HighlightedCode({ code, fenceStartOffset, language, onLanguageSe
   const explicitLanguage = language?.trim();
   const detectedLanguages = useMemo(() => {
     if (explicitLanguage) return [];
-    return detectLanguageWithScoring(code).allScores.slice(0, 5);
+    return detectLanguageWithScoring(code)
+      .allScores.filter(candidate => candidate.score >= 35)
+      .slice(0, 5);
   }, [code, explicitLanguage]);
   const topDetectedLanguage = detectedLanguages[0];
   const defaultDetectedLanguage = topDetectedLanguage ? toCodeFenceLanguage(topDetectedLanguage.language) : "";

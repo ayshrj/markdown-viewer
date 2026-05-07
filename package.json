@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "test:language-detection": "tsx --test tests/language-detection.test.ts",
     "lint:format:all": "npm run lint:fix && npm run format && npm run typecheck",
     "prepare": "husky",
     "postinstall": "node scripts/patch-next-themes.mjs"
@@ -56,6 +57,7 @@
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.7.4",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   },
   "lint-staged": {

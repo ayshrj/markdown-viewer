@@ -1,47 +1,47 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreDockerfile = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [
-    /^FROM\s+[\w.:/-]+/m, // FROM instruction
-    /^RUN\s+/m, // RUN instruction
-    /^COPY\s+/m, // COPY instruction
-    /^ADD\s+/m, // ADD instruction
-    /^WORKDIR\s+/m, // WORKDIR instruction
-    /^EXPOSE\s+\d+/m, // EXPOSE instruction
-    /^CMD\s+/m, // CMD instruction
-    /^ENTRYPOINT\s+/m, // ENTRYPOINT instruction
-  ];
-
-  const mediumPatterns = [
-    /^ENV\s+\w+=.*/m, // ENV instruction
-    /^ARG\s+\w+/m, // ARG instruction
-    /^LABEL\s+/m, // LABEL instruction
-    /^USER\s+/m, // USER instruction
-    /^VOLUME\s+/m, // VOLUME instruction
-  ];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-
-  let score = strongMatches * 25 + mediumMatches * 15;
-
-  // Must start with FROM (typically)
-  if (/^FROM\s+/.test(text.trim())) {
-    score += 20;
-    reasons.push("+20pts for FROM instruction start");
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong Dockerfile patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium Dockerfile patterns`);
-
-  return {
+export const scoreDockerfile = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Dockerfile",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Dockerfile instructions",
+        points: 28,
+        patterns: [
+          /^\s*FROM\s+(?:--platform=\S+\s+)?[\w./:-]+(?:\s+AS\s+\w+)?\s*$/im,
+          /^\s*RUN\s+.+$/im,
+          /^\s*COPY\s+(?:--from=\S+\s+)?\S+\s+\S+/im,
+          /^\s*ADD\s+\S+\s+\S+/im,
+          /^\s*CMD\s+(?:\[|.+$)/im,
+          /^\s*ENTRYPOINT\s+(?:\[|.+$)/im,
+          /^\s*WORKDIR\s+\S+/im,
+          /^\s*EXPOSE\s+\d+/im,
+        ],
+      },
+      {
+        label: "medium Dockerfile instructions",
+        points: 14,
+        max: 42,
+        patterns: [
+          /^\s*ENV\s+\w+=?.*/im,
+          /^\s*ARG\s+\w+/im,
+          /^\s*LABEL\s+[\w.-]+=/im,
+          /^\s*USER\s+\S+/im,
+          /^\s*VOLUME\s+(?:\[|\S+)/im,
+          /^\s*HEALTHCHECK\s+/im,
+          /^\s*SHELL\s+\[/im,
+        ],
+      },
+    ],
+    bonuses: [{ label: "starts with FROM", points: 16, test: value => /^\s*FROM\s+/i.test(value.trim()) }],
+    penalties: [
+      {
+        label: "plain shell without Dockerfile structure",
+        points: 18,
+        patterns: [/^\s*(?:npm|pnpm|yarn|bun|git|curl|wget)\s+/m, /^#!.*\bsh\b/m],
+      },
+    ],
+  });

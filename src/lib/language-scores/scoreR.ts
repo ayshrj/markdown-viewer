@@ -1,28 +1,44 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreR = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /library\s*\(/, // library(
-    /data\.frame\s*\(/, // data.frame(
-    /<-\s*/, // <- assignment
-    /function\s*\(/, // function(
-    /c\s*\(/, // c(
-    /summary\s*\(/, // summary(
-    /str\s*\(/, // str(
-    /ggplot\s*\(/, // ggplot(
-    /\$\w+/, // $column
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const score = calculateScore(matches, strongPatterns.length);
-
-  return {
+export const scoreR = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "R",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} R patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong R patterns",
+        points: 26,
+        patterns: [
+          /\blibrary\s*\(/,
+          /\bdata\.frame\s*\(/,
+          /<-\s*/,
+          /\bfunction\s*\([^)]*\)\s*\{/,
+          /\bggplot\s*\(/,
+          /\bsummary\s*\(/,
+          /\bstr\s*\(/,
+        ],
+      },
+      {
+        label: "medium R patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\bc\s*\([^)]*\)/,
+          /\$\w+/,
+          /\bmutate\s*\(/,
+          /\bselect\s*\(/,
+          /\bread\.csv\s*\(/,
+          /\bTRUE\b|\bFALSE\b/,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-R syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|const|let|#include|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

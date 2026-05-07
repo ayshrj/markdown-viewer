@@ -1,29 +1,37 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scorePerl = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /#!\/.*perl/, // #!/usr/bin/perl
-    /use\s+strict/, // use strict
-    /use\s+warnings/, // use warnings
-    /my\s+\$\w+/, // my $variable
-    /\$\w+\s*=/, // $variable =
-    /sub\s+\w+/, // sub subroutine
-    /chomp\s*\(/, // chomp(
-    /split\s*\(/, // split(
-    /@\w+/, // @array
-    /%\w+/, // %hash
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const score = calculateScore(matches, strongPatterns.length);
-
-  return {
+export const scorePerl = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Perl",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Perl patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Perl patterns",
+        points: 26,
+        patterns: [
+          /^#!.*\bperl\b/m,
+          /\buse\s+strict\b/,
+          /\buse\s+warnings\b/,
+          /\bmy\s+[$@%]\w+/,
+          /\bsub\s+\w+\s*\{/,
+          /\bchomp\s*\(/,
+          /\bsplit\s*\(/,
+        ],
+      },
+      {
+        label: "medium Perl patterns",
+        points: 12,
+        max: 36,
+        patterns: [/[$@%]\w+\s*=/, /=~\s*[ms]?\//, /\bforeach\s+my\b/, /\bprint\s+/, /\bqw\(/],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Perl syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:function|def|#include|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

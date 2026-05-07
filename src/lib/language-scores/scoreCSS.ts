@@ -1,52 +1,42 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreCSS = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [/@media\s*\([^)]*\)/, /@import\s+['"]/, /@keyframes\s+\w+/];
-
-  const mediumPatterns = [/[.#]?[\w-]+\s*\{[^}]*\}/, /:\s*\w+\s*;/];
-
-  const cssProperties = [
-    "color",
-    "background",
-    "margin",
-    "padding",
-    "font",
-    "border",
-    "width",
-    "height",
-    "display",
-    "position",
-    "flex",
-    "grid",
-  ];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-  const propertyMatches = countMatches(
-    text,
-    cssProperties.map(prop => new RegExp(`${prop}\\s*:`, "i"))
-  );
-
-  const hasStructure = text.includes("{") && text.includes("}") && text.includes(":");
-
-  let score = strongMatches * 25 + mediumMatches * 15 + propertyMatches * 8;
-  if (hasStructure) {
-    score += 15;
-    reasons.push("+15pts for CSS structure");
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong CSS patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium CSS patterns`);
-  if (propertyMatches > 0) reasons.push(`${propertyMatches} CSS properties`);
-
-  return {
+export const scoreCSS = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "CSS",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong CSS patterns",
+        points: 26,
+        patterns: [/@media\s+[^{]+\{/, /@keyframes\s+[\w-]+\s*\{/, /@supports\s+[^{]+\{/, /:root\s*\{/, /--[\w-]+\s*:/],
+      },
+      {
+        label: "medium CSS rule/property patterns",
+        points: 12,
+        max: 48,
+        patterns: [
+          /[.#]?[\w-]+\s*\{[^}]*\}/,
+          /\b(?:color|background|margin|padding|display|position|font|border|width|height|grid|flex)\s*:/i,
+          /(?:px|rem|em|vh|vw|%)\s*;/,
+          /#[0-9a-f]{3,8}\b/i,
+          /\b(?:hover|focus|active|before|after)\b/,
+        ],
+      },
+    ],
+    bonuses: [
+      {
+        label: "CSS declaration block",
+        points: 20,
+        test: value => /[.#]?[\w-]+\s*\{[^}]*:\s*[^}]+;?\s*}/.test(value),
+      },
+    ],
+    penalties: [
+      {
+        label: "HTML or source syntax",
+        points: 22,
+        patterns: [/<\/?[a-z][^>]*>/i, /^\s*(?:const|let|function|def|class)\b/m],
+      },
+    ],
+  });

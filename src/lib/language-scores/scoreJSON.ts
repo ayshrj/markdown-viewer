@@ -2,29 +2,41 @@ import { LanguageScore } from "@/types/language-score";
 
 export const scoreJSON = (text: string): LanguageScore => {
   const reasons: string[] = [];
+  const trimmed = text.trim();
   let score = 0;
 
-  const trimmed = text.trim();
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+  if (!trimmed) {
+    return { language: "JSON", score: 0, confidence: "Low", reasons };
+  }
+
+  const hasJsonBoundary =
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+
+  if (hasJsonBoundary) {
     try {
-      JSON.parse(text);
+      JSON.parse(trimmed);
       score = 100;
       reasons.push("Valid JSON structure");
     } catch {
-      if (trimmed.includes(":") && trimmed.includes('"')) {
-        score = 30;
-        reasons.push("JSON-like structure but invalid syntax");
+      if (/"[^"]+"\s*:/.test(trimmed)) {
+        score = 40;
+        reasons.push("JSON-like object with invalid syntax");
       }
     }
-  } else if (trimmed.startsWith("{") && !trimmed.endsWith("}") && trimmed.includes(":")) {
-    score = 20;
-    reasons.push("Incomplete JSON structure");
+  } else if (/^\s*"[^"]+"\s*:/.test(trimmed) && !/^\s*[\w-]+\s*:/.test(trimmed)) {
+    score = 28;
+    reasons.push("JSON property fragment");
+  }
+
+  if (/^\s*(?:const|let|var|export|function)\b/m.test(trimmed)) {
+    score = Math.max(0, score - 45);
+    reasons.push("-45pts for JavaScript syntax");
   }
 
   return {
     language: "JSON",
     score,
-    confidence: score >= 80 ? "High" : score >= 40 ? "Medium" : "Low",
+    confidence: score >= 80 ? "High" : score >= 35 ? "Medium" : "Low",
     reasons,
   };
 };

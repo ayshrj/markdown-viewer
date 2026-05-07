@@ -1,18 +1,42 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scorePHP = (text: string): LanguageScore => {
-  const patterns = [/<\?php/, /\$\w+\s*=/, /echo\s+/, /function\s+\w+\s*\(/, /->\w+/];
-
-  const matches = countMatches(text, patterns);
-  const score = calculateScore(matches, patterns.length);
-
-  return {
+export const scorePHP = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "PHP",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${patterns.length} PHP patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong PHP patterns",
+        points: 26,
+        patterns: [
+          /<\?php/,
+          /\$\w+\s*=/,
+          /\becho\s+/,
+          /\bfunction\s+\w+\s*\(/,
+          /->\w+/,
+          /::\w+/,
+          /\bnamespace\s+[\w\\]+;/,
+        ],
+      },
+      {
+        label: "medium PHP patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\buse\s+[\w\\]+;/,
+          /\bclass\s+\w+\s*(?:extends\s+\w+)?\s*\{/,
+          /\bpublic\s+function\b/,
+          /\barray\s*\(/,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-PHP syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|#include|package\s+main|using\s+System)\b/m],
+      },
+    ],
+  });

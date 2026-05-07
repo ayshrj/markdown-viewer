@@ -1,28 +1,37 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreScala = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /object\s+\w+/, // object Name
-    /class\s+\w+/, // class Name
-    /def\s+\w+/, // def method
-    /val\s+\w+\s*=/, // val variable =
-    /var\s+\w+\s*=/, // var variable =
-    /import\s+scala\./, // import scala.
-    /case\s+class/, // case class
-    /match\s*\{/, // match {
-    /=>\s*/, // =>
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const score = calculateScore(matches, strongPatterns.length);
-
-  return {
+export const scoreScala = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Scala",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Scala patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Scala patterns",
+        points: 26,
+        patterns: [
+          /\bobject\s+\w+/,
+          /\bcase\s+class\s+\w+/,
+          /\bdef\s+\w+\s*\([^)]*\)\s*[:=]/,
+          /\bval\s+\w+\s*=/,
+          /\bvar\s+\w+\s*=/,
+          /\bimport\s+scala\./,
+          /\bmatch\s*\{/,
+        ],
+      },
+      {
+        label: "medium Scala patterns",
+        points: 12,
+        max: 36,
+        patterns: [/=>\s*/, /\bOption\[/, /\bSome\s*\(/, /\bNone\b/, /\bextends\s+\w+/],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Scala syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:function|#include|package\s+main|using\s+System)\b/m, /<\?php/],
+      },
+    ],
+  });

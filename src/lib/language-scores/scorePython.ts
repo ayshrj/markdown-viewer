@@ -1,72 +1,52 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scorePython = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [
-    /^def\s+\w+\s*\(/m,
-    /^class\s+\w+\s*:/m,
-    /^if\s+__name__\s*==\s*['"']__main__['"']\s*:/m,
-    /print\s*\(/,
-    /input\s*\(/,
-    /f["'].*\{.*\}.*["']/,
-  ];
-
-  const mediumPatterns = [
-    /import\s+\w+/,
-    /from\s+\w+\s+import/,
-    /^\s*elif\s+/m,
-    /^\s*except\s*:/m,
-    /range\s*\(/,
-    /len\s*\(/,
-  ];
-
-  const weakPatterns = [
-    /^#.*$/m,
-    "def ",
-    "class ",
-    "import ",
-    "from ",
-    "if ",
-    "elif ",
-    "else:",
-    "for ",
-    "while ",
-    "try:",
-    "except:",
-  ];
-
-  // Penalty patterns (non-Python syntax)
-  const penaltyPatterns = [
-    "function(",
-    "console.log",
-    "document.",
-    "public class",
-    "static void",
-    "#include",
-    "using namespace",
-    "<?php",
-  ];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-  const weakMatches = countMatches(text, weakPatterns);
-  const penaltyMatches = countMatches(text, penaltyPatterns);
-
-  let score = strongMatches * 25 + mediumMatches * 15 + weakMatches * 5;
-  score = Math.max(0, score - penaltyMatches * 30);
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong Python patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium Python patterns`);
-  if (weakMatches > 0) reasons.push(`${weakMatches} weak Python indicators`);
-  if (penaltyMatches > 0) reasons.push(`-${penaltyMatches * 30}pts for non-Python syntax`);
-
-  return {
+export const scorePython = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Python",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Python patterns",
+        points: 25,
+        patterns: [
+          /^\s*def\s+\w+\s*\([^)]*\)\s*:/m,
+          /^\s*class\s+\w+(?:\([^)]*\))?\s*:/m,
+          /^\s*if\s+__name__\s*==\s*['"]__main__['"]\s*:/m,
+          /\bprint\s*\(/,
+          /\bfrom\s+[\w.]+\s+import\s+/,
+          /\bimport\s+[\w.]+/,
+          /\bf["'][^"']*\{[^}]+}[^"']*["']/,
+        ],
+      },
+      {
+        label: "medium Python control/library patterns",
+        points: 12,
+        max: 48,
+        patterns: [
+          /^\s*(?:elif|except|finally|with)\b.*:/m,
+          /\b(?:range|len|enumerate|zip|open)\s*\(/,
+          /\bself\.\w+/,
+          /->\s*\w+\s*:/,
+        ],
+      },
+      {
+        label: "weak Python indicators",
+        points: 5,
+        max: 15,
+        patterns: [/^\s*#.*$/m, /^\s*(?:for|while|try|if)\b.*:/m],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Python syntax",
+        points: 26,
+        patterns: [
+          /console\.log\s*\(/,
+          /^\s*(?:function|const|let|public\s+class|#include|using\s+namespace)\b/m,
+          /<\?php/,
+        ],
+      },
+    ],
+  });

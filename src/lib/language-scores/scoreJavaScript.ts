@@ -1,55 +1,63 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreJavaScript = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [
-    /console\.log\s*\(/,
-    /document\.\w+/,
-    /window\.\w+/,
-    /=>\s*\{/,
-    /require\s*\(['"][^'"]*['"]\)/,
-    /module\.exports\s*=/,
-  ];
-
-  const mediumPatterns = [
-    /function\s+\w+\s*\(/,
-    /const\s+\w+\s*=/,
-    /let\s+\w+\s*=/,
-    /var\s+\w+\s*=/,
-    /\.addEventListener\s*\(/,
-    /setTimeout\s*\(/,
-  ];
-
-  const weakPatterns = ["function", "const", "let", "var", "=>", "import", "export"];
-
-  const penaltyPatterns = ["def ", "print(", "class ", "public class", "interface ", "type ", "#include"];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-  const weakMatches = countMatches(text, weakPatterns);
-  const penaltyMatches = countMatches(text, penaltyPatterns);
-
-  let score = strongMatches * 25 + mediumMatches * 15 + weakMatches * 5;
-  score = Math.max(0, score - penaltyMatches * 25);
-
-  // Bonus for JavaScript structure
-  if (text.includes(";") && (text.includes("function") || text.includes("const"))) {
-    score += 10;
-    reasons.push("+10pts for JavaScript structure");
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong JS patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium JS patterns`);
-  if (weakMatches > 0) reasons.push(`${weakMatches} weak JS indicators`);
-  if (penaltyMatches > 0) reasons.push(`-${penaltyMatches * 25}pts for non-JS syntax`);
-
-  return {
+export const scoreJavaScript = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "JavaScript",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong JavaScript patterns",
+        points: 24,
+        patterns: [
+          /console\.(?:log|error|warn)\s*\(/,
+          /\b(?:const|let|var)\s+\w+\s*=/,
+          /=>\s*(?:\{|[^;\n]+)/,
+          /\bfunction\s+\w+\s*\(/,
+          /\b(?:require|import)\s*\(?["'][^"']+["']\)?/,
+          /\bmodule\.exports\s*=/,
+          /\bexport\s+(?:default\s+)?(?:function|const|class)\b/,
+        ],
+      },
+      {
+        label: "medium browser/node patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\bdocument\.\w+/,
+          /\bwindow\.\w+/,
+          /\.addEventListener\s*\(/,
+          /\bsetTimeout\s*\(/,
+          /\bPromise\./,
+          /\basync\s+function\b/,
+        ],
+      },
+      {
+        label: "weak JavaScript indicators",
+        points: 5,
+        max: 15,
+        patterns: [/\{[\s\S]*}/, /;\s*$/m, /\.\w+\s*\(/],
+      },
+    ],
+    bonuses: [
+      {
+        label: "JavaScript statement structure",
+        points: 12,
+        test: value => /\b(?:const|let|var|function)\b[\s\S]*;\s*$/.test(value.trim()),
+      },
+    ],
+    penalties: [
+      {
+        label: "typed or non-JS syntax",
+        points: 22,
+        patterns: [
+          /\binterface\s+\w+/,
+          /\btype\s+\w+\s*=/,
+          /:\s*\w+\s*[=;,){}]/,
+          /^\s*(?:def|public\s+class|#include|package\s+main|fn\s+main)\b/m,
+          /<\?php/,
+        ],
+      },
+    ],
+  });

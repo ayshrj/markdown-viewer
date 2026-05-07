@@ -2,40 +2,43 @@ import { LanguageScore } from "@/types/language-score";
 
 export const scoreBase64 = (text: string): LanguageScore => {
   const reasons: string[] = [];
+  const compact = text.trim().replace(/\s+/g, "");
   let score = 0;
 
-  const trimmed = text.trim();
-  const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
-
-  // Check if it's valid base64
-  if (base64Pattern.test(trimmed.replace(/\s/g, ""))) {
-    const length = trimmed.replace(/\s/g, "").length;
-    if (length % 4 === 0 && length > 10) {
-      score = 95;
-      reasons.push("Valid Base64 format");
-    }
+  if (compact.length < 24 || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    return { language: "Base64", score: 0, confidence: "Low", reasons };
   }
 
-  // Check for common Base64 characteristics
-  const base64Chars = (text.match(/[A-Za-z0-9+/]/g) || []).length;
-  const totalChars = text.replace(/\s/g, "").length;
-  const base64Ratio = base64Chars / totalChars;
+  const padding = compact.endsWith("==") ? 2 : compact.endsWith("=") ? 1 : 0;
+  const hasMixedCase = /[a-z]/.test(compact) && /[A-Z]/.test(compact);
+  const hasDigits = /\d/.test(compact);
+  const hasSymbols = /[+/]/.test(compact);
 
-  if (base64Ratio > 0.9 && totalChars > 20) {
-    score = Math.max(score, 80);
-    reasons.push(`${Math.round(base64Ratio * 100)}% Base64 characters`);
+  score = 45;
+  reasons.push("Base64 alphabet and length");
+
+  if (compact.length >= 40) {
+    score += 20;
+    reasons.push("+20pts for encoded-length plausibility");
   }
-
-  // Check for padding
-  if (text.endsWith("=") || text.endsWith("==")) {
+  if (hasMixedCase && hasDigits) {
+    score += 20;
+    reasons.push("+20pts for mixed Base64 character distribution");
+  }
+  if (hasSymbols || padding > 0) {
     score += 15;
-    reasons.push("+15pts for Base64 padding");
+    reasons.push("+15pts for Base64 symbols/padding");
+  }
+
+  if (/\b(?:function|class|SELECT|FROM|npm|pnpm|yarn|const|let)\b/.test(text)) {
+    score = Math.max(0, score - 45);
+    reasons.push("-45pts for source/plain text words");
   }
 
   return {
     language: "Base64",
     score: Math.min(100, score),
-    confidence: score >= 80 ? "High" : score >= 40 ? "Medium" : "Low",
+    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
     reasons,
   };
 };

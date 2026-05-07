@@ -1,38 +1,50 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreHTML = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [/<!doctype\s+html/i, /<html[^>]*>/i, /<head[^>]*>/i, /<body[^>]*>/i];
-
-  const mediumPatterns = [
-    /<meta[^>]*>/i,
-    /<title[^>]*>/i,
-    /<script[^>]*>/i,
-    /<style[^>]*>/i,
-    /<link[^>]*>/i,
-    /<div[^>]*>/i,
-    /<span[^>]*>/i,
-  ];
-
-  const weakPatterns = [/<[a-zA-Z][^>]*>/, /<\/[a-zA-Z][^>]*>/];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-  const weakMatches = countMatches(text, weakPatterns);
-
-  const score = strongMatches * 30 + mediumMatches * 15 + Math.min(weakMatches * 3, 30);
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong HTML patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium HTML patterns`);
-  if (weakMatches > 0) reasons.push(`${weakMatches} HTML tags found`);
-
-  return {
+export const scoreHTML = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "HTML",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong HTML document patterns",
+        points: 28,
+        patterns: [/<!doctype\s+html/i, /<html\b[^>]*>/i, /<head\b[^>]*>/i, /<body\b[^>]*>/i, /<main\b[^>]*>/i],
+      },
+      {
+        label: "medium HTML element patterns",
+        points: 12,
+        max: 48,
+        patterns: [
+          /<div\b[^>]*>[\s\S]*<\/div>/i,
+          /<section\b[^>]*>/i,
+          /<script\b[^>]*>/i,
+          /<style\b[^>]*>/i,
+          /<meta\b[^>]*>/i,
+          /<link\b[^>]*>/i,
+          /<img\b[^>]*>/i,
+        ],
+      },
+      {
+        label: "weak HTML tag indicators",
+        points: 5,
+        max: 15,
+        patterns: [/<[a-z][\w:-]*(?:\s+[^>]*)?>/i, /<\/[a-z][\w:-]*>/i],
+      },
+    ],
+    bonuses: [
+      {
+        label: "paired HTML tag",
+        points: 20,
+        test: value => /<([a-z][\w:-]*)\b[^>]*>[\s\S]*<\/\1>/i.test(value),
+      },
+    ],
+    penalties: [
+      {
+        label: "XML or JSX/source syntax",
+        points: 20,
+        patterns: [/^<\?xml/i, /^\s*(?:const|let|function|import|export)\b/m, /className=/],
+      },
+    ],
+  });

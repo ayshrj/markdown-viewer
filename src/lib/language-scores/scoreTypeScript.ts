@@ -1,49 +1,57 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 import { scoreJavaScript } from "./scoreJavaScript";
 
 export const scoreTypeScript = (text: string): LanguageScore => {
-  const reasons: string[] = [];
+  const base = scoreByPatterns({
+    language: "TypeScript",
+    text,
+    groups: [
+      {
+        label: "strong TypeScript patterns",
+        points: 30,
+        patterns: [
+          /\binterface\s+\w+(?:\s+extends\s+\w+)?\s*\{/,
+          /\btype\s+\w+\s*=\s*[^=]/,
+          /\benum\s+\w+\s*\{/,
+          /\b(?:public|private|protected|readonly)\s+\w+/,
+          /\bimplements\s+\w+/,
+          /\bas\s+(?:const|\w+)/,
+          /:\s*(?:string|number|boolean|unknown|never|void|Promise<[^>]+>)/,
+        ],
+      },
+      {
+        label: "medium TypeScript annotations",
+        points: 14,
+        max: 42,
+        patterns: [/<[A-Z]\w*(?:,\s*\w+)?>/, /\w+\?:\s*\w+/, /\)\s*:\s*\w+/, /\bnamespace\s+\w+\s*\{/],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-TypeScript syntax",
+        points: 24,
+        patterns: [/^\s*(?:def|#include|package\s+main|fn\s+main|public\s+class)\b/m, /<\?php/],
+      },
+    ],
+    bonuses: [
+      {
+        label: "typed variable declaration",
+        points: 12,
+        test: value => /\b(?:const|let|var)\s+\w+\s*:\s*\w+\s*=/.test(value),
+      },
+    ],
+  });
 
-  const strongPatterns = [
-    /interface\s+\w+\s*\{/,
-    /type\s+\w+\s*=\s*[^=]/,
-    /enum\s+\w+\s*\{/,
-    /:\s*\w+\s*[=;,)\]]/,
-    /<[A-Z]\w*>/,
-  ];
-
-  const mediumPatterns = [
-    /namespace\s+\w+\s*\{/,
-    /abstract\s+class/,
-    /implements\s+\w+/,
-    /as\s+\w+/,
-    /public\s+\w+\s*:/,
-    /private\s+\w+\s*:/,
-  ];
-
-  // Must have JavaScript features too
   const jsScore = scoreJavaScript(text);
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-
-  let score = strongMatches * 30 + mediumMatches * 20;
-
-  // Bonus if it also has JS features
-  if (jsScore.score > 20) {
-    score += jsScore.score * 0.3;
-    reasons.push(`+${Math.round(jsScore.score * 0.3)}pts for JS compatibility`);
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong TS patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium TS patterns`);
+  const jsBonus = jsScore.score >= 35 ? Math.min(18, Math.round(jsScore.score * 0.2)) : 0;
+  const score = Math.min(100, base.score + jsBonus);
 
   return {
-    language: "TypeScript",
-    score: Math.min(100, score),
+    ...base,
+    score,
     confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
+    reasons: jsBonus > 0 ? [...base.reasons, `+${jsBonus}pts for JavaScript compatibility`] : base.reasons,
   };
 };

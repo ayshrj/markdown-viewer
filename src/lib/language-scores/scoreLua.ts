@@ -1,28 +1,42 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreLua = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /local\s+\w+\s*=/, // local variable =
-    /function\s+\w+\s*\(/, // function name(
-    /end\s*$/m, // end
-    /require\s*\(/, // require(
-    /print\s*\(/, // print(
-    /for\s+\w+\s*=\s*\d+,\d+/, // for i=1,10
-    /while\s+.*\s+do/, // while condition do
-    /if\s+.*\s+then/, // if condition then
-    /elseif\s+/, // elseif
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const score = calculateScore(matches, strongPatterns.length);
-
-  return {
+export const scoreLua = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Lua",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Lua patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Lua patterns",
+        points: 26,
+        patterns: [
+          /\blocal\s+\w+\s*=/,
+          /\bfunction\s+[\w.:]+\s*\(/,
+          /^\s*end\s*$/m,
+          /\brequire\s*\(["'][^"']+["']\)/,
+          /\bprint\s*\(/,
+          /\bif\s+.+\s+then\b/,
+        ],
+      },
+      {
+        label: "medium Lua patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\bfor\s+\w+\s*=\s*\d+\s*,\s*\d+/,
+          /\bwhile\s+.+\s+do\b/,
+          /\belseif\s+/,
+          /\btable\.insert\s*\(/,
+          /--\s*.*$/m,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Lua syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|const|let|#include|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

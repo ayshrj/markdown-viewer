@@ -1,28 +1,37 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreHaskell = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /import\s+\w+/, // import Module
-    /main\s*::\s*IO/, // main :: IO
-    /\w+\s*::\s*\w+/, // function :: Type
-    /data\s+\w+/, // data Type
-    /type\s+\w+/, // type alias
-    /where\s*$/m, // where
-    /let\s+\w+\s*=/, // let variable =
-    /case\s+\w+\s+of/, // case expression of
-    /<-\s*/, // <- (do notation)
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const score = calculateScore(matches, strongPatterns.length);
-
-  return {
+export const scoreHaskell = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Haskell",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Haskell patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Haskell patterns",
+        points: 26,
+        patterns: [
+          /\bmain\s*::\s*IO\b/,
+          /^\s*\w+\s*::\s*.+$/m,
+          /\bdata\s+\w+/,
+          /\bnewtype\s+\w+/,
+          /\bcase\s+.+\s+of\b/,
+          /<-\s*/,
+          /\bwhere\s*$/m,
+        ],
+      },
+      {
+        label: "medium Haskell patterns",
+        points: 12,
+        max: 36,
+        patterns: [/\bimport\s+[A-Z]\w*(?:\.\w+)*/, /\blet\s+\w+\s*=/, /\bin\s+/, /=>\s*/, /\bdo\s*$/m],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Haskell syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:function|const|let|def|#include|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

@@ -1,30 +1,43 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreDart = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /import\s+'dart:/, // import 'dart:
-    /void\s+main\s*\(\)/, // void main()
-    /final\s+\w+\s*=/, // final variable =
-    /const\s+\w+\s*=/, // const variable =
-    /class\s+\w+\s+extends/, // class Name extends
-    /Widget\s+build/, // Widget build (Flutter)
-    /@override/i, // @override
-    /setState\s*\(/, // setState( (Flutter)
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const flutterBonus = text.includes("Widget") || text.includes("StatelessWidget") ? 10 : 0;
-  const penaltyMatches = countMatches(text, ["def ", "function(", "console.log", "printf"]);
-
-  const score = calculateScore(matches, strongPatterns.length, flutterBonus, penaltyMatches * 20);
-
-  return {
+export const scoreDart = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Dart",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Dart patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Dart/Flutter patterns",
+        points: 26,
+        patterns: [
+          /\bimport\s+['"]dart:/,
+          /\bvoid\s+main\s*\(\)/,
+          /\b(?:final|const)\s+\w+\s*=/,
+          /\bclass\s+\w+\s+extends\s+\w+/,
+          /\bWidget\s+build\s*\(/,
+          /@override\b/i,
+          /\bsetState\s*\(/,
+        ],
+      },
+      {
+        label: "medium Dart patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\bFuture<[^>]+>/,
+          /\basync\s*\{/,
+          /\bStatelessWidget\b|\bStatefulWidget\b/,
+          /\bprint\s*\(/,
+          /\bMap<[^>]+>/,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Dart syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|function|#include|using\s+System|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

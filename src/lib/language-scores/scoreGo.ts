@@ -1,29 +1,37 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreGo = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /package\s+main/, // package main
-    /func\s+main\s*\(\)/, // func main()
-    /import\s*\(/, // import (
-    /fmt\.Print/, // fmt.Print
-    /go\s+\w+\s*\(/, // go function()
-    /defer\s+/, // defer
-    /chan\s+/, // chan
-    /:=\s*/, // :=
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const penaltyMatches = countMatches(text, ["def ", "function(", "console.log", "class "]);
-
-  const score = calculateScore(matches, strongPatterns.length, 0, penaltyMatches * 20);
-
-  return {
+export const scoreGo = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Go",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Go patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Go patterns",
+        points: 26,
+        patterns: [
+          /\bpackage\s+\w+/,
+          /\bfunc\s+main\s*\(\)/,
+          /\bfunc\s+\w+\s*\([^)]*\)\s*(?:\([^)]*\)|\w+)?\s*\{/,
+          /\bfmt\.Print/,
+          /\b:=/,
+          /\bdefer\s+/,
+          /\bgo\s+\w+\s*\(/,
+        ],
+      },
+      {
+        label: "medium Go patterns",
+        points: 12,
+        max: 36,
+        patterns: [/\bimport\s*\(/, /\bchan\s+\w+/, /\bstruct\s*\{/, /\berr\s*!=\s*nil/, /\brange\s+\w+/],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Go syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|function|class|#include|using\s+System)\b/m, /<\?php/],
+      },
+    ],
+  });

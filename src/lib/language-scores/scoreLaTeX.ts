@@ -1,44 +1,41 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreLaTeX = (text: string): LanguageScore => {
-  const reasons: string[] = [];
-
-  const strongPatterns = [
-    /\\documentclass\s*\{/, // Document class
-    /\\begin\s*\{document\}/, // Begin document
-    /\\end\s*\{document\}/, // End document
-    /\\usepackage\s*\{/, // Packages
-    /\\\w+\s*\{[^}]*\}/, // LaTeX commands
-  ];
-
-  const mediumPatterns = [
-    /\\section\s*\{/, // Sections
-    /\\subsection\s*\{/, // Subsections
-    /\\\w+/, // Any LaTeX command
-    /\$.*?\$/, // Inline math
-    /\\$$[\s\S]*?\\$$/, // Display math
-  ];
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const mediumMatches = countMatches(text, mediumPatterns);
-
-  let score = strongMatches * 30 + mediumMatches * 15;
-
-  // Bonus for math mode
-  if (/\$.*?\$/.test(text) || /\\$$[\s\S]*?\\$$/.test(text)) {
-    score += 10;
-    reasons.push("+10pts for LaTeX math");
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} strong LaTeX patterns`);
-  if (mediumMatches > 0) reasons.push(`${mediumMatches} medium LaTeX patterns`);
-
-  return {
+export const scoreLaTeX = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "LaTeX",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong LaTeX document patterns",
+        points: 28,
+        patterns: [
+          /\\documentclass(?:\[[^\]]+])?\{[^}]+}/,
+          /\\begin\{document}/,
+          /\\end\{document}/,
+          /\\usepackage(?:\[[^\]]+])?\{[^}]+}/,
+          /\\begin\{(?:equation|align|figure|table|itemize|enumerate)}/,
+        ],
+      },
+      {
+        label: "medium LaTeX command/math patterns",
+        points: 12,
+        max: 48,
+        patterns: [
+          /\\(?:section|subsection|chapter|title|author)\{[^}]+}/,
+          /\\[A-Za-z]+\{[^}]*}/,
+          /\$[^$\n]+\$/,
+          /\\\[[\s\S]*?\\]/,
+        ],
+      },
+    ],
+    bonuses: [{ label: "LaTeX math mode", points: 15, test: value => /\$[^$\n]+\$|\\\[[\s\S]*?\\]/.test(value) }],
+    penalties: [
+      {
+        label: "Markdown/source syntax",
+        points: 22,
+        patterns: [/^#{1,6}\s+/m, /^\s*(?:function|const|let|def|class)\b/m, /<\/?[a-z][^>]*>/i],
+      },
+    ],
+  });

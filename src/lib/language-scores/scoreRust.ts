@@ -1,31 +1,44 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { calculateScore } from "./calculateScore";
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
-export const scoreRust = (text: string): LanguageScore => {
-  const strongPatterns = [
-    /fn\s+main\s*\(\)/, // fn main()
-    /let\s+mut\s+\w+/, // let mut variable
-    /println!\s*\(/, // println!(
-    /use\s+std::/, // use std::
-    /impl\s+\w+/, // impl Name
-    /trait\s+\w+/, // trait Name
-    /match\s+\w+\s*\{/, // match variable {
-    /Some\(\w+\)/, // Some(value)
-    /&str/, // &str
-    /&mut\s+/, // &mut
-  ];
-
-  const matches = countMatches(text, strongPatterns);
-  const penaltyMatches = countMatches(text, ["def ", "function(", "console.log", "class "]);
-
-  const score = calculateScore(matches, strongPatterns.length, 0, penaltyMatches * 25);
-
-  return {
+export const scoreRust = (text: string): LanguageScore =>
+  scoreByPatterns({
     language: "Rust",
-    score,
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons: [`${matches}/${strongPatterns.length} Rust patterns matched`],
-  };
-};
+    text,
+    groups: [
+      {
+        label: "strong Rust patterns",
+        points: 26,
+        patterns: [
+          /\bfn\s+main\s*\(\)/,
+          /\blet\s+mut\s+\w+/,
+          /\bprintln!\s*\(/,
+          /\buse\s+std::/,
+          /\bimpl\s+\w+/,
+          /\btrait\s+\w+/,
+          /\bmatch\s+\w+\s*\{/,
+          /\b(?:Some|None|Ok|Err)\b/,
+        ],
+      },
+      {
+        label: "medium Rust patterns",
+        points: 12,
+        max: 36,
+        patterns: [
+          /\b&(?:mut\s+)?\w+/,
+          /\bString::from\s*\(/,
+          /\bVec<[^>]+>/,
+          /->\s*(?:Result|Option|impl|\w+)/,
+          /\bpub\s+(?:fn|struct|enum)\b/,
+        ],
+      },
+    ],
+    penalties: [
+      {
+        label: "non-Rust syntax",
+        points: 24,
+        patterns: [/console\.log\s*\(/, /^\s*(?:def|function|class|#include|package\s+main)\b/m, /<\?php/],
+      },
+    ],
+  });

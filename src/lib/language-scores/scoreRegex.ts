@@ -1,36 +1,35 @@
 import { LanguageScore } from "@/types/language-score";
 
-import { countMatches } from "./countMatches";
+import { scoreByPatterns } from "./patternScore";
 
 export const scoreRegex = (text: string): LanguageScore => {
-  const reasons: string[] = [];
+  const trimmed = text.trim();
+  const regexCharCount = (trimmed.match(/[\\^$.*+?()[\]{}|]/g) ?? []).length;
+  const density = trimmed.length > 0 ? regexCharCount / trimmed.length : 0;
 
-  const strongPatterns = [
-    /\^.*\$/, // Anchors
-    /$$[\w\W-]+$$/, // Character classes
-    /$$.*?$$/, // Groups
-    /\{?\d+,?\d*\}/, // Quantifiers
-    /\\\w/, // Escape sequences
-  ];
-
-  const regexChars = ["+", "*", "?", "|", "^", "$", ".", "[", "]", "(", ")", "{", "}"];
-  const regexCharCount = regexChars.reduce((count, char) => count + (text.split(char).length - 1), 0);
-
-  const strongMatches = countMatches(text, strongPatterns);
-  const density = regexCharCount / text.length;
-
-  let score = strongMatches * 20;
-  if (density > 0.3) {
-    score += 40;
-    reasons.push("+40pts for high regex character density");
-  }
-
-  if (strongMatches > 0) reasons.push(`${strongMatches} regex patterns`);
-
-  return {
+  return scoreByPatterns({
     language: "RegEx",
-    score: Math.min(100, score),
-    confidence: score >= 70 ? "High" : score >= 35 ? "Medium" : "Low",
-    reasons,
-  };
+    text,
+    groups: [
+      {
+        label: "strong regex syntax patterns",
+        points: 24,
+        patterns: [/^\^.+\$$/, /\[[^\]\n]+\]/, /\([^)\n]+\)/, /\\[dDsSwWbB]/, /\{\d+,?\d*}/, /\(\?:[^)]+\)/],
+      },
+      {
+        label: "medium regex operators",
+        points: 10,
+        max: 30,
+        patterns: [/[.*+?]/, /\|/, /\$\//, /^\/.+\/[gimsuy]*$/],
+      },
+    ],
+    bonuses: [{ label: "high regex token density", points: 25, test: () => density >= 0.22 && trimmed.length >= 8 }],
+    penalties: [
+      {
+        label: "source or prose syntax",
+        points: 24,
+        patterns: [/\s{2,}/, /^\s*(?:function|const|let|def|class|SELECT|npm)\b/m, /[.;]\s*$/m],
+      },
+    ],
+  });
 };
