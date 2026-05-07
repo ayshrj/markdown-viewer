@@ -19,7 +19,6 @@ import {
   Printer,
   RefreshCcw,
   Search,
-  Square,
   Sun,
   Target,
   Trash2,
@@ -190,6 +189,10 @@ export function MarkdownStudio() {
   const findPending = findOpen && (findSearching || findInput !== findQuery);
   const findMatchCount = findMatches.length;
   const activeFindPosition = findMatchCount ? Math.min(activeFindIndex + 1, findMatchCount) : 0;
+  const isTtsActive = ttsPlaybackState !== "idle";
+  const ttsPrimaryLabel = isTtsActive ? "Stop reading" : "Listen";
+  const ttsPauseIcon = ttsPlaybackState === "paused" ? Play : Pause;
+  const ttsPauseLabel = ttsPlaybackState === "paused" ? "Resume" : "Pause";
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
@@ -914,6 +917,40 @@ export function MarkdownStudio() {
     cancelBrowserSpeech();
   }, []);
 
+  const toggleTts = useCallback(() => {
+    if (ttsPlaybackStateRef.current !== "idle") {
+      stopTts();
+      return;
+    }
+
+    startOrResumeTts();
+  }, [startOrResumeTts, stopTts]);
+
+  const toggleTtsPause = useCallback(() => {
+    if (ttsPlaybackStateRef.current === "paused") {
+      startOrResumeTts();
+      return;
+    }
+
+    pauseTts();
+  }, [pauseTts, startOrResumeTts]);
+
+  const restartTts = useCallback(() => {
+    activeSpeechRequestIdRef.current += 1;
+    ttsSentencesRef.current = [];
+    ttsCurrentSentenceIndexRef.current = 0;
+    ttsCurrentSentenceCharOffsetRef.current = 0;
+    ttsPlaybackStateRef.current = "idle";
+    setTtsPlaybackState("idle");
+    cancelBrowserSpeech();
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+
+    window.setTimeout(() => {
+      startOrResumeTts();
+    }, 0);
+  }, [clearWordHighlight, startOrResumeTts]);
+
   useEffect(() => {
     return () => {
       activeSpeechRequestIdRef.current += 1;
@@ -1241,18 +1278,14 @@ export function MarkdownStudio() {
                   onClick={() => setFindOpen(o => !o)}
                   active={findOpen}
                 />
-                <IconButton
-                  icon={ttsPlaybackState === "paused" ? Play : Volume2}
-                  label={ttsPlaybackState === "idle" ? "Listen" : ttsPlaybackState === "paused" ? "Resume" : "Playing"}
-                  onClick={startOrResumeTts}
-                  active={ttsPlaybackState !== "idle"}
-                />
+                <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
 
-                {ttsPlaybackState === "playing" ? (
-                  <IconButton icon={Pause} label="Pause" onClick={pauseTts} active />
+                {isTtsActive ? (
+                  <>
+                    <IconButton icon={ttsPauseIcon} label={ttsPauseLabel} onClick={toggleTtsPause} active />
+                    <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
+                  </>
                 ) : null}
-
-                {ttsPlaybackState !== "idle" ? <IconButton icon={Square} label="Stop" onClick={stopTts} /> : null}
                 <IconButton
                   icon={WrapText}
                   label={wordWrap ? "Word wrap on" : "Word wrap off"}
@@ -1329,14 +1362,13 @@ export function MarkdownStudio() {
                     onClick={sheetAction(() => setZenMode(z => !z))}
                     active={zenMode}
                   />
-                  <IconButton
-                    icon={ttsPlaybackState === "paused" ? Play : Volume2}
-                    label={
-                      ttsPlaybackState === "idle" ? "Listen" : ttsPlaybackState === "paused" ? "Resume" : "Playing"
-                    }
-                    onClick={startOrResumeTts}
-                    active={ttsPlaybackState !== "idle"}
-                  />
+                  <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
+                  {isTtsActive ? (
+                    <>
+                      <IconButton icon={ttsPauseIcon} label={ttsPauseLabel} onClick={toggleTtsPause} active />
+                      <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="py-1">
@@ -1364,6 +1396,13 @@ export function MarkdownStudio() {
 
           {zenMode && (
             <div className="flex items-center justify-end gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
+              <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
+              {isTtsActive ? (
+                <>
+                  <IconButton icon={ttsPauseIcon} label={ttsPauseLabel} onClick={toggleTtsPause} active />
+                  <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
+                </>
+              ) : null}
               <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
               <Button
                 type="button"
