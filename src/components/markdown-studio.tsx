@@ -69,6 +69,7 @@ type FindMatch = {
 
 type TtsPlaybackState = "idle" | "playing" | "paused";
 type TtsHighlightMode = "sentence" | "word";
+type TtsReadMode = "document" | "selection";
 
 type SpeechTextNodeSegment = {
   node: Text;
@@ -80,6 +81,14 @@ type SpeechSentenceSegment = {
   text: string;
   start: number;
   end: number;
+};
+
+type PreviewReadPopoverState = {
+  text: string;
+  start: number;
+  end: number;
+  left: number;
+  top: number;
 };
 
 const STORAGE_KEYS = {
@@ -167,6 +176,7 @@ export function MarkdownStudio() {
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const savedAtRef = useRef<number>(0);
+  const previewSelectionTimeoutRef = useRef<number | null>(null);
   const activeSpeechRequestIdRef = useRef(0);
   const sourceRef = useRef("");
   const lastHighlightedWordRef = useRef<string | null>(null);
@@ -174,6 +184,7 @@ export function MarkdownStudio() {
   const lastScrollTargetTopRef = useRef<number | null>(null);
   const ttsPlaybackStateRef = useRef<TtsPlaybackState>("idle");
   const ttsHighlightModeRef = useRef<TtsHighlightMode>("sentence");
+  const ttsReadModeRef = useRef<TtsReadMode>("document");
   const ttsSentencesRef = useRef<SpeechSentenceSegment[]>([]);
   const ttsCurrentSentenceIndexRef = useRef(0);
   const ttsCurrentSentenceCharOffsetRef = useRef(0);
@@ -218,6 +229,7 @@ export function MarkdownStudio() {
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
   const [ttsPlaybackState, setTtsPlaybackState] = useState<TtsPlaybackState>("idle");
   const [ttsHighlightMode, setTtsHighlightMode] = useState<TtsHighlightMode>("sentence");
+  const [previewReadPopover, setPreviewReadPopover] = useState<PreviewReadPopoverState | null>(null);
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
   const source = activeDocument.source;
@@ -460,6 +472,10 @@ export function MarkdownStudio() {
   useEffect(() => {
     previewScrollRef.current?.scrollTo({ top: 0 });
   }, [activeDocumentId]);
+
+  useEffect(() => {
+    setPreviewReadPopover(null);
+  }, [activeDocumentId, source, viewMode]);
 
   useEffect(() => {
     if (!showPreview) return;
@@ -744,6 +760,7 @@ export function MarkdownStudio() {
     ttsSentencesRef.current = [];
     ttsCurrentSentenceIndexRef.current = 0;
     ttsCurrentSentenceCharOffsetRef.current = 0;
+    ttsReadModeRef.current = "document";
     ttsPlaybackStateRef.current = "idle";
     setTtsPlaybackState("idle");
     clearWordHighlight();
@@ -818,7 +835,9 @@ export function MarkdownStudio() {
       const sentence = ttsSentencesRef.current[sentenceIndex];
 
       if (!sentence) {
+        ttsPlaybackStateRef.current = "idle";
         setTtsPlaybackState("idle");
+        ttsReadModeRef.current = "document";
         clearWordHighlight();
         lastScrollTargetTopRef.current = null;
         return;
@@ -835,7 +854,9 @@ export function MarkdownStudio() {
         const nextSentenceIndex = sentenceIndex + 1;
 
         if (nextSentenceIndex >= ttsSentencesRef.current.length) {
+          ttsPlaybackStateRef.current = "idle";
           setTtsPlaybackState("idle");
+          ttsReadModeRef.current = "document";
           clearWordHighlight();
           lastScrollTargetTopRef.current = null;
           return;
@@ -891,6 +912,15 @@ export function MarkdownStudio() {
         const nextSentenceIndex = sentenceIndex + 1;
 
         if (nextSentenceIndex >= ttsSentencesRef.current.length) {
+          if (ttsReadModeRef.current === "selection") {
+            ttsReadModeRef.current = "document";
+            ttsPlaybackStateRef.current = "idle";
+            setTtsPlaybackState("idle");
+            clearWordHighlight();
+            lastScrollTargetTopRef.current = null;
+            return;
+          }
+
           speakNextDocument();
           return;
         }
@@ -955,6 +985,7 @@ export function MarkdownStudio() {
     ttsSentencesRef.current = sentences;
     ttsCurrentSentenceIndexRef.current = 0;
     ttsCurrentSentenceCharOffsetRef.current = 0;
+    ttsReadModeRef.current = "document";
 
     speakSentenceAtIndex(0, requestId, 0);
   }, [clearWordHighlight, speakSentenceAtIndex]);
@@ -1042,6 +1073,7 @@ export function MarkdownStudio() {
     ttsSentencesRef.current = [];
     ttsCurrentSentenceIndexRef.current = 0;
     ttsCurrentSentenceCharOffsetRef.current = 0;
+    ttsReadModeRef.current = "document";
     ttsPlaybackStateRef.current = "idle";
     setTtsPlaybackState("idle");
     cancelBrowserSpeech();
@@ -1058,6 +1090,87 @@ export function MarkdownStudio() {
     clearWordHighlight();
     lastScrollTargetTopRef.current = null;
   }, [clearWordHighlight]);
+
+  function canStartBrowserTts(): boolean {
+    if (!hasBrowserTts) {
+      setToast("Text-to-speech is not supported in this browser");
+      return false;
+    }
+
+    if (isCheckingBrowserTts) {
+      setToast("Text-to-speech voices are loading. Try again.");
+      return false;
+    }
+
+    if (!hasBrowserTtsVoices) {
+      setToast("No text-to-speech voices found in this browser");
+      return false;
+    }
+
+    return true;
+  }
+
+  function startTtsWithSentences(
+    sentences: SpeechSentenceSegment[],
+    sentenceIndex: number,
+    startCharOffset: number,
+    readMode: TtsReadMode
+  ) {
+    if (!sentences.length) {
+      setToast("Nothing to read");
+      return;
+    }
+
+    activeSpeechRequestIdRef.current += 1;
+    const requestId = activeSpeechRequestIdRef.current;
+
+    cancelBrowserSpeech();
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+
+    ttsSentencesRef.current = sentences;
+    ttsCurrentSentenceIndexRef.current = sentenceIndex;
+    ttsCurrentSentenceCharOffsetRef.current = Math.max(0, startCharOffset);
+    ttsReadModeRef.current = readMode;
+
+    window.getSelection()?.removeAllRanges();
+    setPreviewReadPopover(null);
+
+    speakSentenceAtIndex(sentenceIndex, requestId, startCharOffset);
+  }
+
+  function startTtsFromPreviewSelection(readMode: TtsReadMode) {
+    if (!previewReadPopover || !canStartBrowserTts()) return;
+
+    const preview = previewScrollRef.current;
+    const speechText = preview
+      ? collectSpeechTextSegments(preview).text
+      : getFallbackSpeechTextFromSource(sourceRef.current);
+    const startBoundary = resolveWordBoundary(speechText, previewReadPopover.start);
+    const startOffset = startBoundary?.start ?? previewReadPopover.start;
+
+    if (readMode === "selection") {
+      const selectedText = speechText.slice(startOffset, previewReadPopover.end);
+      const selectedSentences = splitTextIntoSentences(selectedText).map(sentence => ({
+        ...sentence,
+        start: sentence.start + startOffset,
+        end: sentence.end + startOffset,
+      }));
+
+      startTtsWithSentences(selectedSentences, 0, 0, "selection");
+      return;
+    }
+
+    const sentences = splitTextIntoSentences(speechText);
+    const startPoint = getSentenceStartPoint(sentences, startOffset);
+
+    if (!startPoint) {
+      setToast("Nothing to read from that selection");
+      return;
+    }
+
+    startTtsWithSentences(sentences, startPoint.index, startPoint.charOffset, "document");
+  }
 
   useEffect(() => {
     return () => {
@@ -1220,6 +1333,79 @@ export function MarkdownStudio() {
   function printDocument() {
     window.print();
   }
+
+  const showPreviewReadPopover = useCallback(() => {
+    const timeout = window.setTimeout(() => {
+      const preview = previewScrollRef.current;
+      const selection = window.getSelection();
+
+      if (!preview || !selection || selection.rangeCount === 0) {
+        setPreviewReadPopover(null);
+        return;
+      }
+
+      const selectedText = selection.toString().trim();
+      if (!selectedText) {
+        setPreviewReadPopover(null);
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+
+      if (!isSelectionInsideElement(range, preview)) {
+        setPreviewReadPopover(null);
+        return;
+      }
+
+      const speechSelection =
+        getSpeechSelectionFromRange(preview, range) ?? getSpeechSelectionFromSelectedText(preview, selectedText);
+
+      if (!speechSelection) {
+        setPreviewReadPopover(null);
+        return;
+      }
+
+      const position = getSelectionPopoverPosition(range);
+
+      setPreviewReadPopover({
+        text: speechSelection.text,
+        start: speechSelection.start,
+        end: speechSelection.end,
+        left: position.left,
+        top: position.top,
+      });
+    }, 0);
+    previewSelectionTimeoutRef.current = timeout;
+  }, []);
+
+  const schedulePreviewReadPopover = useCallback(() => {
+    if (previewSelectionTimeoutRef.current !== null) {
+      window.clearTimeout(previewSelectionTimeoutRef.current);
+    }
+
+    previewSelectionTimeoutRef.current = window.setTimeout(showPreviewReadPopover, 80);
+  }, [showPreviewReadPopover]);
+
+  useEffect(() => {
+    if (!showPreview) {
+      setPreviewReadPopover(null);
+      return;
+    }
+
+    document.addEventListener("selectionchange", schedulePreviewReadPopover);
+    window.addEventListener("mouseup", schedulePreviewReadPopover);
+    window.addEventListener("touchend", schedulePreviewReadPopover);
+
+    return () => {
+      document.removeEventListener("selectionchange", schedulePreviewReadPopover);
+      window.removeEventListener("mouseup", schedulePreviewReadPopover);
+      window.removeEventListener("touchend", schedulePreviewReadPopover);
+
+      if (previewSelectionTimeoutRef.current !== null) {
+        window.clearTimeout(previewSelectionTimeoutRef.current);
+      }
+    };
+  }, [schedulePreviewReadPopover, showPreview]);
 
   function cycleTheme() {
     const currentIndex = THEME_VALUES.indexOf(selectedTheme);
@@ -1850,6 +2036,9 @@ export function MarkdownStudio() {
                 </div>
                 <article
                   ref={previewScrollRef}
+                  onMouseUp={schedulePreviewReadPopover}
+                  onTouchEnd={schedulePreviewReadPopover}
+                  onScroll={() => setPreviewReadPopover(null)}
                   style={{ fontSize: `${fontSize}px` }}
                   className={cn("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
@@ -1921,6 +2110,41 @@ export function MarkdownStudio() {
             </div>
           ) : null}
         </section>
+
+        {previewReadPopover ? (
+          <div
+            data-preview-read-popover="true"
+            role="dialog"
+            aria-label="Read selected preview text"
+            onMouseDown={event => event.preventDefault()}
+            className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-1 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-1 text-xs text-[var(--text)] shadow-lg"
+            style={{ left: `${previewReadPopover.left}px`, top: `${previewReadPopover.top}px` }}
+            title={previewReadPopover.text}
+          >
+            <span className="flex items-center gap-1 px-2 font-bold text-[var(--muted)]">
+              <Volume2 aria-hidden size={13} />
+              Read
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => startTtsFromPreviewSelection("document")}
+              className="h-7 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+            >
+              Start from here
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => startTtsFromPreviewSelection("selection")}
+              className="h-7 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 text-xs font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)]"
+            >
+              Read selection
+            </Button>
+          </div>
+        ) : null}
 
         {isDraggingFiles ? (
           <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center border-[6px] border-dashed border-[var(--accent)] bg-[var(--bg)]/70 p-6 backdrop-blur-[2px]">
@@ -2536,8 +2760,175 @@ function isInsideElement(target: EventTarget | null, element: Element | null): b
   return Boolean(element && target instanceof Node && element.contains(target));
 }
 
+function isSelectionInsideElement(range: Range, element: Element): boolean {
+  return (
+    isInsideElement(range.commonAncestorContainer, element) ||
+    isInsideElement(range.startContainer, element) ||
+    isInsideElement(range.endContainer, element)
+  );
+}
+
+function getSelectionPopoverPosition(range: Range): { left: number; top: number } {
+  const rect = Array.from(range.getClientRects()).find(clientRect => clientRect.width > 0 || clientRect.height > 0);
+  const fallbackRect = range.getBoundingClientRect();
+  const targetRect = rect ?? fallbackRect;
+
+  return {
+    left: clampNumber(targetRect.left + targetRect.width / 2, 128, window.innerWidth - 128),
+    top: Math.max(56, targetRect.top - 10),
+  };
+}
+
+function getSpeechSelectionFromRange(
+  root: HTMLElement,
+  range: Range
+): Pick<PreviewReadPopoverState, "text" | "start" | "end"> | null {
+  const { text, segments } = collectSpeechTextSegments(root);
+  let selectionStart: number | null = null;
+  let selectionEnd: number | null = null;
+
+  for (const segment of segments) {
+    const overlap = getTextNodeSelectionOverlap(range, segment.node);
+    if (!overlap) continue;
+
+    const start = segment.start + overlap.start;
+    const end = segment.start + overlap.end;
+
+    if (start >= end) continue;
+
+    selectionStart ??= start;
+    selectionEnd = end;
+  }
+
+  if (selectionStart === null || selectionEnd === null) return null;
+
+  const normalizedSelection = normalizeSpeechSelectionRange(text, selectionStart, selectionEnd);
+  if (!normalizedSelection) return null;
+
+  return {
+    ...normalizedSelection,
+    text: text.slice(normalizedSelection.start, normalizedSelection.end).trim(),
+  };
+}
+
+function getSpeechSelectionFromSelectedText(
+  root: HTMLElement,
+  selectedText: string
+): Pick<PreviewReadPopoverState, "text" | "start" | "end"> | null {
+  const speechText = collectSpeechTextSegments(root).text;
+  const trimmedSelectedText = selectedText.trim();
+  if (!trimmedSelectedText) return null;
+
+  const exactIndex = speechText.indexOf(trimmedSelectedText);
+  const normalizedIndex =
+    exactIndex >= 0 ? exactIndex : findWhitespaceFlexibleTextIndex(speechText, trimmedSelectedText);
+
+  if (normalizedIndex < 0) return null;
+
+  const matchedText =
+    exactIndex >= 0
+      ? trimmedSelectedText
+      : speechText.slice(normalizedIndex).match(new RegExp(buildWhitespaceFlexiblePattern(trimmedSelectedText)))?.[0];
+
+  if (!matchedText) return null;
+
+  const normalizedSelection = normalizeSpeechSelectionRange(
+    speechText,
+    normalizedIndex,
+    normalizedIndex + matchedText.length
+  );
+
+  if (!normalizedSelection) return null;
+
+  return {
+    ...normalizedSelection,
+    text: speechText.slice(normalizedSelection.start, normalizedSelection.end).trim(),
+  };
+}
+
+function findWhitespaceFlexibleTextIndex(text: string, query: string): number {
+  const pattern = buildWhitespaceFlexiblePattern(query);
+  if (!pattern) return -1;
+
+  const match = new RegExp(pattern).exec(text);
+  return match?.index ?? -1;
+}
+
+function buildWhitespaceFlexiblePattern(value: string): string {
+  return value.trim().split(/\s+/).filter(Boolean).map(escapeRegex).join("\\s+");
+}
+
+function getTextNodeSelectionOverlap(range: Range, node: Text): { start: number; end: number } | null {
+  const nodeRange = document.createRange();
+  nodeRange.selectNodeContents(node);
+
+  const selectionStartsBeforeNodeEnds = range.compareBoundaryPoints(Range.START_TO_END, nodeRange) < 0;
+  const selectionEndsAfterNodeStarts = range.compareBoundaryPoints(Range.END_TO_START, nodeRange) > 0;
+
+  if (!selectionStartsBeforeNodeEnds || !selectionEndsAfterNodeStarts) return null;
+
+  const nodeLength = node.textContent?.length ?? 0;
+  const start = range.startContainer === node ? range.startOffset : 0;
+  const end = range.endContainer === node ? range.endOffset : nodeLength;
+
+  return {
+    start: clampNumber(start, 0, nodeLength),
+    end: clampNumber(end, 0, nodeLength),
+  };
+}
+
+function normalizeSpeechSelectionRange(
+  text: string,
+  start: number,
+  end: number
+): { start: number; end: number } | null {
+  let nextStart = clampNumber(start, 0, text.length);
+  let nextEnd = clampNumber(end, nextStart, text.length);
+
+  while (nextStart < nextEnd && /\s/.test(text[nextStart] ?? "")) {
+    nextStart += 1;
+  }
+
+  while (nextEnd > nextStart && /\s/.test(text[nextEnd - 1] ?? "")) {
+    nextEnd -= 1;
+  }
+
+  const firstWord = resolveWordBoundary(text, nextStart);
+  if (firstWord && firstWord.start < nextEnd) {
+    nextStart = firstWord.start;
+  }
+
+  return nextStart < nextEnd ? { start: nextStart, end: nextEnd } : null;
+}
+
+function getSentenceStartPoint(
+  sentences: SpeechSentenceSegment[],
+  startOffset: number
+): { index: number; charOffset: number } | null {
+  const containingSentenceIndex = sentences.findIndex(
+    sentence => startOffset >= sentence.start && startOffset < sentence.end
+  );
+  const index =
+    containingSentenceIndex >= 0
+      ? containingSentenceIndex
+      : sentences.findIndex(sentence => sentence.start >= startOffset);
+
+  if (index < 0) return null;
+
+  const sentence = sentences[index];
+
+  return {
+    index,
+    charOffset: Math.max(0, startOffset - sentence.start),
+  };
+}
+
 function clampSplitPercent(value: number) {
   return Math.min(Math.max(value, MIN_SPLIT_PERCENT), MAX_SPLIT_PERCENT);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 function capitalize(value: string) {
