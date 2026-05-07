@@ -10,6 +10,14 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## SEO URL
+
+Set the public deployment URL so canonical links, `robots.txt`, `sitemap.xml`, and social previews use the right origin:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
 ## Verify
 
 ```bash

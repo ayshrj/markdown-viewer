@@ -2,14 +2,77 @@ import type { Metadata } from "next";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import {
+  SITE_DESCRIPTION,
+  SITE_ICON_PATH,
+  SITE_KEYWORDS,
+  SITE_NAME,
+  SITE_OG_IMAGE_PATH,
+  SITE_TWITTER_IMAGE_PATH,
+  SITE_URL,
+} from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "MDLens",
-  description:
-    "A focused markdown reader with multi-file sessions, outline navigation, themes, math, diagrams, and syntax highlighting.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: SITE_KEYWORDS,
+  authors: [{ name: SITE_NAME }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  category: "productivity",
+  alternates: {
+    canonical: "/",
+  },
   icons: {
-    icon: [{ url: "/mdlens-icon.svg", type: "image/svg+xml" }],
-    shortcut: ["/mdlens-icon.svg"],
+    icon: [{ url: SITE_ICON_PATH, type: "image/svg+xml" }],
+    shortcut: [SITE_ICON_PATH],
+    apple: [{ url: SITE_ICON_PATH, type: "image/svg+xml" }],
+  },
+  manifest: "/manifest.webmanifest",
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: SITE_OG_IMAGE_PATH,
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} markdown reader preview`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [SITE_TWITTER_IMAGE_PATH],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
   },
 };
 
