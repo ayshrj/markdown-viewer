@@ -38,6 +38,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
 import { Button } from "@/components/ui/button";
+import { HighlightEditor, type HighlightEditorHandle, type HighlightRange } from "@/components/ui/highlight-editor";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -99,7 +100,7 @@ export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const sourcePaneRef = useRef<HTMLElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HighlightEditorHandle>(null);
   const previewScrollRef = useRef<HTMLElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
@@ -153,6 +154,7 @@ export function MarkdownStudio() {
   const findPending = findOpen && (findSearching || findInput !== findQuery);
   const findMatchCount = findMatches.length;
   const activeFindPosition = findMatchCount ? Math.min(activeFindIndex + 1, findMatchCount) : 0;
+  const sourceHighlights: HighlightRange[] = findPending ? [] : findMatches;
 
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
@@ -224,15 +226,15 @@ export function MarkdownStudio() {
 
   useEffect(() => {
     if (!findOpen || !showEditor || !findMatchCount) return;
-    const textarea = textareaRef.current;
+    const editor = editorRef.current;
     const match = findMatches[activeFindIndex] ?? findMatches[0];
-    if (!textarea || !match) return;
+    if (!editor || !match) return;
 
     const animationFrame = window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(match.start, match.end);
-      scrollTextareaSelectionIntoView(textarea, match.start);
+      editor.selectRange(match.start, match.end);
+      editor.scrollOffsetIntoView(match.start);
       if (!isFindBarTarget(document.activeElement)) {
-        textarea.focus({ preventScroll: true });
+        editor.focus({ preventScroll: true });
       }
     });
 
@@ -400,10 +402,6 @@ export function MarkdownStudio() {
         document.id === activeDocumentId ? { ...document, source: nextSource, updatedAt: nextUpdatedAt } : document
       )
     );
-  }
-
-  function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
-    updateSource(event.target.value);
   }
 
   function applyCodeFenceLanguage(fenceStartOffset: number, language: string) {
@@ -1156,19 +1154,17 @@ export function MarkdownStudio() {
                 <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
                   Source
                 </div>
-                <textarea
-                  ref={textareaRef}
+                <HighlightEditor
+                  ref={editorRef}
                   value={source}
-                  onChange={handleTextChange}
-                  spellCheck={false}
+                  onChange={updateSource}
+                  highlights={sourceHighlights}
                   aria-label="Markdown source"
                   placeholder="Start writing Markdown here..."
                   style={{
                     fontSize: `${fontSize}px`,
-                    whiteSpace: wordWrap ? "pre-wrap" : "pre",
-                    overflowX: wordWrap ? "hidden" : "auto",
                   }}
-                  className="min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent p-5 font-mono leading-7 text-[var(--text)] outline-none placeholder:text-[var(--muted-soft)]"
+                  wordWrap={wordWrap}
                 />
               </section>
             ) : null}
@@ -1763,12 +1759,6 @@ function getFindMatches(query: string, source: string, caseSensitive: boolean): 
   } catch {
     return [];
   }
-}
-
-function scrollTextareaSelectionIntoView(textarea: HTMLTextAreaElement, selectionStart: number) {
-  const lineIndex = textarea.value.slice(0, selectionStart).split("\n").length - 1;
-  const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight) || 24;
-  textarea.scrollTop = Math.max(0, (lineIndex - 3) * lineHeight);
 }
 
 function reorderDocuments(
