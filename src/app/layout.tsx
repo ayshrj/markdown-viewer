@@ -8,6 +8,7 @@ import {
   SITE_KEYWORDS,
   SITE_NAME,
   SITE_OG_IMAGE_PATH,
+  SITE_TITLE,
   SITE_TWITTER_IMAGE_PATH,
   SITE_URL,
 } from "@/lib/site";
@@ -15,7 +16,7 @@ import {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: SITE_NAME,
+    default: SITE_TITLE,
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
@@ -25,6 +26,7 @@ export const metadata: Metadata = {
   creator: SITE_NAME,
   publisher: SITE_NAME,
   category: "productivity",
+  referrer: "origin-when-cross-origin",
   alternates: {
     canonical: "/",
   },
@@ -36,9 +38,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   openGraph: {
     type: "website",
+    locale: "en_US",
     url: "/",
     siteName: SITE_NAME,
-    title: SITE_NAME,
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     images: [
       {
@@ -51,7 +54,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: SITE_NAME,
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     images: [SITE_TWITTER_IMAGE_PATH],
   },
