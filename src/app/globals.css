@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ──────────────────────────────────────────────────────────*/
+
 :root {
   --bg: #f4f4f2;
   --panel: #ffffff;
@@ -45,6 +47,8 @@
   --font-mono: var(--font-code);
 }
 
+/* ─── Reset ──────────────────────────────────────────────────────────────────*/
+
 * {
   box-sizing: border-box;
 }
@@ -69,6 +73,8 @@ select,
 textarea {
   font: inherit;
 }
+
+/* ─── MDLens branding ────────────────────────────────────────────────────────*/
 
 .mdlens-icon {
   --mdlens-icon-bg: var(--bg, #f7f6f2);
@@ -95,6 +101,8 @@ textarea {
   border: 1px solid var(--line);
   background: var(--panel);
 }
+
+/* ─── Split divider ──────────────────────────────────────────────────────────*/
 
 .split-divider {
   width: 6px;
@@ -133,6 +141,8 @@ textarea {
 .split-divider.is-dragging .split-divider-dots span {
   background: var(--muted);
 }
+
+/* ─── Read layout & TOC ──────────────────────────────────────────────────────*/
 
 .read-layout {
   min-height: 0;
@@ -258,6 +268,8 @@ textarea {
 .read-scroll-wrap {
   overflow: hidden;
 }
+
+/* ─── Markdown body ──────────────────────────────────────────────────────────*/
 
 .markdown-body {
   color: var(--text);
@@ -423,6 +435,32 @@ textarea {
   font-weight: 700;
 }
 
+/* ─── sub / sup / abbr ───────────────────────────────────────────────────────*/
+
+.markdown-body sub,
+.markdown-body sup {
+  font-size: 0.72em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.markdown-body sup {
+  top: -0.5em;
+}
+
+.markdown-body sub {
+  bottom: -0.25em;
+}
+
+.markdown-body abbr[title] {
+  text-decoration: underline dotted;
+  cursor: help;
+  text-underline-offset: 3px;
+}
+
+/* ─── Tables ─────────────────────────────────────────────────────────────────*/
+
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -458,6 +496,8 @@ textarea {
   border-bottom: 0;
 }
 
+/* ─── Task list ──────────────────────────────────────────────────────────────*/
+
 .task-checkbox {
   accent-color: var(--accent);
   inline-size: 0.95rem;
@@ -465,6 +505,8 @@ textarea {
   margin-right: 0.45rem;
   transform: translateY(0.12rem);
 }
+
+/* ─── Code blocks ────────────────────────────────────────────────────────────*/
 
 .code-block {
   margin: 0 0 1.2em;
@@ -489,16 +531,193 @@ textarea {
   font-family: var(--font-code);
 }
 
+/* ─── Math ───────────────────────────────────────────────────────────────────*/
+
 .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.25rem 0;
 }
 
+/* ─── Mermaid ────────────────────────────────────────────────────────────────*/
+
 .mermaid svg {
   max-width: 100%;
   height: auto;
 }
+
+svg[aria-roledescription="error"] {
+  display: none !important;
+}
+
+/* ─── Callout / Directive containers ─────────────────────────────────────────
+   Syntax:
+     :::tip
+     Content here.
+     :::
+
+   Types: tip · info · warning · danger · success · note
+*/
+
+.callout {
+  position: relative;
+  margin: 0 0 1.2em;
+  padding: 0.75rem 1rem 0.75rem 1.1rem;
+  border-radius: 0 6px 6px 0;
+  border-left: 3px solid currentColor;
+  font-size: 0.9em;
+}
+
+.callout::before {
+  content: attr(data-label);
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.callout > *:last-child {
+  margin-bottom: 0;
+}
+
+/* tip — blue */
+.callout-tip {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1e3a5f;
+}
+
+/* info — sky */
+.callout-info {
+  background: #f0f9ff;
+  border-color: #0ea5e9;
+  color: #0c4a6e;
+}
+
+/* warning — amber */
+.callout-warning {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #78350f;
+}
+
+/* danger — red */
+.callout-danger {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #7f1d1d;
+}
+
+/* success — green */
+.callout-success {
+  background: #f0fdf4;
+  border-color: #22c55e;
+  color: #14532d;
+}
+
+/* note — neutral */
+.callout-note {
+  background: var(--panel-muted);
+  border-color: var(--muted);
+  color: var(--muted);
+}
+
+/* Dark mode callout overrides */
+:root[data-mode="dark"] .callout-tip {
+  background: #1b2a3f;
+  border-color: #8ab4ff;
+  color: #93c5fd;
+}
+
+:root[data-mode="dark"] .callout-info {
+  background: #0c2233;
+  border-color: #38bdf8;
+  color: #7dd3fc;
+}
+
+:root[data-mode="dark"] .callout-warning {
+  background: #2d1e0a;
+  border-color: #fbbf24;
+  color: #fcd34d;
+}
+
+:root[data-mode="dark"] .callout-danger {
+  background: #2d1010;
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+:root[data-mode="dark"] .callout-success {
+  background: #0d2b19;
+  border-color: #4ade80;
+  color: #86efac;
+}
+
+:root[data-mode="dark"] .callout-note {
+  background: var(--panel-muted);
+  border-color: var(--muted-soft);
+  color: var(--muted);
+}
+
+/* ─── Footnotes ──────────────────────────────────────────────────────────────*/
+
+.markdown-body [data-footnotes] {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.markdown-body [data-footnotes] h2 {
+  font-size: 0.78rem;
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+  border-bottom: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.markdown-body [data-footnotes] ol {
+  padding-left: 1.5rem;
+  margin: 0;
+}
+
+.markdown-body [data-footnotes] li {
+  margin-bottom: 0.4em;
+}
+
+.markdown-body sup a {
+  font-size: 0.72em;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0 1px;
+}
+
+.markdown-body sup a:hover {
+  text-decoration: underline;
+}
+
+/* ─── Zen mode ───────────────────────────────────────────────────────────────*/
+
+.zen-mode {
+  padding: 0 !important;
+}
+
+.zen-mode > section {
+  border-radius: 0 !important;
+  border: none !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────*/
 
 @media (max-width: 768px) {
   .markdown-body {
@@ -521,6 +740,54 @@ textarea {
   }
 }
 
-svg[aria-roledescription="error"] {
-  display: none !important;
+/* ─── Print ──────────────────────────────────────────────────────────────────*/
+
+.print-content {
+  display: none;
+}
+
+@media print {
+  body > * {
+    display: none !important;
+  }
+
+  .print-content {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: white;
+    z-index: 9999;
+  }
+
+  .print-content .markdown-body {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2rem;
+    font-size: 11pt;
+    line-height: 1.7;
+    color: #111;
+  }
+
+  .print-content .markdown-body h1,
+  .print-content .markdown-body h2,
+  .print-content .markdown-body h3 {
+    color: #111;
+    page-break-after: avoid;
+  }
+
+  .print-content .markdown-body pre,
+  .print-content .markdown-body blockquote {
+    page-break-inside: avoid;
+  }
+
+  .print-content .markdown-body a {
+    color: #111;
+    text-decoration: underline;
+  }
+
+  .print-content .markdown-body a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #555;
+  }
 }
