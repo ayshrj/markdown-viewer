@@ -39,6 +39,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
@@ -1438,14 +1439,15 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
           >
             −
           </Button>
-          <input
-            type="range"
+          <Slider
             min={FONT_SIZE_MIN}
             max={FONT_SIZE_MAX}
             step={1}
-            value={fontSize}
-            onChange={e => onChange(Number(e.target.value))}
-            className="flex-1 accent-[var(--accent)]"
+            value={[fontSize]}
+            onValueChange={([nextFontSize]) => {
+              if (typeof nextFontSize === "number") onChange(nextFontSize);
+            }}
+            className="flex-1 [&_[data-slot=slider-range]]:bg-[var(--accent)] [&_[data-slot=slider-thumb]]:border-[var(--accent)] [&_[data-slot=slider-thumb]]:bg-[var(--panel)] [&_[data-slot=slider-track]]:bg-[var(--panel-sunken)]"
             aria-label="Font size slider"
           />
           <Button
