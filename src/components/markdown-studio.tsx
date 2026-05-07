@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import MDLensIcon from "@/components/mdlens-icon";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
 import type { ThemeMode } from "@/types/markdown";
@@ -565,7 +566,13 @@ export function MarkdownStudio() {
     <main className="h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6">
       <section className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1180px] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]">
         <header className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2.5">
-          <h1 className="mr-auto text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+          <h1 className="mr-auto inline-flex items-center gap-2 text-[0.8rem] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+            <MDLensIcon
+              aria-hidden
+              className="size-5 rounded-[0.35rem]"
+              focusable="false"
+              size={20}
+            />
             MDLens
           </h1>
 

@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: "MDLens",
   description:
     "A focused markdown reader with multi-file sessions, outline navigation, themes, math, diagrams, and syntax highlighting.",
+  icons: {
+    icon: [{ url: "/mdlens-icon.svg", type: "image/svg+xml" }],
+    shortcut: ["/mdlens-icon.svg"],
+  },
 };
 
 export default function RootLayout({
