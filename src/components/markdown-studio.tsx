@@ -136,6 +136,7 @@ export function MarkdownStudio() {
   const speakSentenceAtIndexRef = useRef<
     ((sentenceIndex: number, requestId: number, startCharOffset?: number) => void) | null
   >(null);
+  const speakNextDocumentRef = useRef<(() => void) | null>(null);
 
   const didMountRef = useRef(false);
 
@@ -663,6 +664,51 @@ export function MarkdownStudio() {
     stopTts();
   }, [activeDocumentId, stopTts]);
 
+  const speakNextDocument = useCallback(() => {
+    const currentIndex = documents.findIndex(document => document.id === activeDocumentId);
+    const nextDocument = currentIndex >= 0 ? documents[currentIndex + 1] : null;
+
+    if (!nextDocument) {
+      ttsPlaybackStateRef.current = "idle";
+      setTtsPlaybackState("idle");
+      clearWordHighlight();
+      lastScrollTargetTopRef.current = null;
+      ttsCurrentSentenceCharOffsetRef.current = 0;
+      setToast("Finished reading all documents");
+      return;
+    }
+
+    activeSpeechRequestIdRef.current += 1;
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+    ttsCurrentSentenceIndexRef.current = 0;
+    ttsCurrentSentenceCharOffsetRef.current = 0;
+
+    setActiveDocumentId(nextDocument.id);
+
+    window.setTimeout(() => {
+      const preview = previewScrollRef.current;
+      const text = preview ? collectSpeechTextSegments(preview).text : nextDocument.source;
+      const sentences = splitTextIntoSentences(text);
+
+      if (!sentences.length) {
+        speakNextDocumentRef.current?.();
+        return;
+      }
+      const requestId = activeSpeechRequestIdRef.current;
+
+      ttsSentencesRef.current = sentences;
+      ttsPlaybackStateRef.current = "playing";
+      setTtsPlaybackState("playing");
+
+      speakSentenceAtIndexRef.current?.(0, requestId, 0);
+    }, 160);
+  }, [activeDocumentId, clearWordHighlight, documents]);
+
+  useEffect(() => {
+    speakNextDocumentRef.current = speakNextDocument;
+  }, [speakNextDocument]);
+
   const speakSentenceAtIndex = useCallback(
     (sentenceIndex: number, requestId: number, startCharOffset = 0) => {
       if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
@@ -740,11 +786,7 @@ export function MarkdownStudio() {
         const nextSentenceIndex = sentenceIndex + 1;
 
         if (nextSentenceIndex >= ttsSentencesRef.current.length) {
-          ttsPlaybackStateRef.current = "idle";
-          setTtsPlaybackState("idle");
-          clearWordHighlight();
-          lastScrollTargetTopRef.current = null;
-          ttsCurrentSentenceCharOffsetRef.current = 0;
+          speakNextDocument();
           return;
         }
 
@@ -773,7 +815,7 @@ export function MarkdownStudio() {
 
       window.speechSynthesis.speak(utterance);
     },
-    [clearWordHighlight, updateSpokenWord]
+    [clearWordHighlight, speakNextDocument, updateSpokenWord]
   );
 
   useEffect(() => {
