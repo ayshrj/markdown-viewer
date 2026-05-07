@@ -441,7 +441,12 @@ export function MarkdownStudio() {
   }
 
   function openLinkedDocument(href: string): boolean {
+    const hash = getLinkHash(href);
     const linkedFilename = getLinkedMarkdownFilename(href);
+
+    if (!linkedFilename && hash) {
+      return scrollPreviewToHeading(hash);
+    }
 
     if (!linkedFilename) {
       return false;
@@ -458,14 +463,8 @@ export function MarkdownStudio() {
 
     setActiveDocumentId(linkedDocument.id);
 
-    const hash = getLinkHash(href);
-
     if (hash) {
-      window.setTimeout(() => {
-        document
-          .getElementById(hash)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 80);
+      window.setTimeout(() => scrollPreviewToHeading(hash), 80);
     }
 
     setToast(`Opened ${linkedDocument.filename ?? linkedFilename}`);
@@ -476,16 +475,20 @@ export function MarkdownStudio() {
     event: MouseEvent<HTMLAnchorElement>,
     headingId: string
   ) {
+    if (scrollPreviewToHeading(headingId)) {
+      event.preventDefault();
+    }
+  }
+
+  function scrollPreviewToHeading(headingId: string): boolean {
     const scrollContainer = previewScrollRef.current;
     const target = scrollContainer?.querySelector<HTMLElement>(
       `#${CSS.escape(headingId)}`
     );
 
     if (!scrollContainer || !target) {
-      return;
+      return false;
     }
-
-    event.preventDefault();
 
     const containerTop = scrollContainer.getBoundingClientRect().top;
     const targetTop = target.getBoundingClientRect().top;
@@ -494,6 +497,8 @@ export function MarkdownStudio() {
       top: targetTop - containerTop + scrollContainer.scrollTop - 16,
       behavior: "smooth",
     });
+
+    return true;
   }
 
   function downloadMarkdown() {
