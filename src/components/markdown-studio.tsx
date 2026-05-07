@@ -13,15 +13,19 @@ import {
   Monitor,
   Moon,
   MoreHorizontal,
+  Pause,
   Pencil,
+  Play,
   Printer,
   RefreshCcw,
   Search,
+  Square,
   Sun,
   Target,
   Trash2,
   Type,
   Upload,
+  Volume2,
   WrapText,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -41,11 +45,13 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useBrowserTts } from "@/hooks/use-browser-tts";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
 import { ACTIVE_DOCUMENT_TITLE_COOKIE, SITE_NAME } from "@/lib/site";
+import { cn } from "@/lib/utils";
 import type { ThemeMode } from "@/types/markdown";
 
 type ViewMode = "split" | "edit" | "read";
@@ -58,6 +64,20 @@ type SessionDocument = {
 };
 
 type FindMatch = {
+  start: number;
+  end: number;
+};
+
+type TtsPlaybackState = "idle" | "playing" | "paused";
+
+type SpeechTextNodeSegment = {
+  node: Text;
+  start: number;
+  end: number;
+};
+
+type SpeechSentenceSegment = {
+  text: string;
   start: number;
   end: number;
 };
@@ -94,6 +114,7 @@ const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 22;
 const FONT_SIZE_DEFAULT = 15;
 const FIND_DEBOUNCE_MS = 180;
+const TTS_HIGHLIGHT_NAME = "mdlens-tts-word";
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +125,20 @@ export function MarkdownStudio() {
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   const savedAtRef = useRef<number>(0);
+  const activeSpeechRequestIdRef = useRef(0);
+  const sourceRef = useRef("");
+  const lastHighlightedWordRef = useRef<string | null>(null);
+  const lastScrollTargetTopRef = useRef<number | null>(null);
+  const ttsPlaybackStateRef = useRef<TtsPlaybackState>("idle");
+  const ttsSentencesRef = useRef<SpeechSentenceSegment[]>([]);
+  const ttsCurrentSentenceIndexRef = useRef(0);
+  const ttsCurrentSentenceCharOffsetRef = useRef(0);
+  const speakSentenceAtIndexRef = useRef<
+    ((sentenceIndex: number, requestId: number, startCharOffset?: number) => void) | null
+  >(null);
+
+  const didMountRef = useRef(false);
+
   const { setTheme, theme } = useTheme();
 
   const [documents, setDocuments] = useState<SessionDocument[]>(() => [
@@ -136,6 +171,7 @@ export function MarkdownStudio() {
   const [replaceQuery, setReplaceQuery] = useState("");
   const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
+  const [ttsPlaybackState, setTtsPlaybackState] = useState<TtsPlaybackState>("idle");
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
   const source = activeDocument.source;
@@ -157,6 +193,12 @@ export function MarkdownStudio() {
   const { breakpoint } = useScreenSize();
   const isSmallScreen = useMemo(() => breakpoint && ["xs", "sm", "md", "lg"].includes(breakpoint), [breakpoint]);
 
+  const {
+    isSupported: hasBrowserTts,
+    hasVoices: hasBrowserTtsVoices,
+    isChecking: isCheckingBrowserTts,
+  } = useBrowserTts();
+
   const sheetAction = useCallback(
     (fn: () => void) => () => {
       fn();
@@ -171,6 +213,10 @@ export function MarkdownStudio() {
     fileInputRef.current?.click();
     setMobileSheetOpen(false);
   }, []);
+
+  useEffect(() => {
+    sourceRef.current = source;
+  }, [source]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -481,6 +527,359 @@ export function MarkdownStudio() {
     };
   }, []);
 
+  useEffect(() => {
+    ttsPlaybackStateRef.current = ttsPlaybackState;
+  }, [ttsPlaybackState]);
+
+  const clearWordHighlight = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    lastHighlightedWordRef.current = null;
+
+    const cssHighlights = (
+      window as Window & {
+        CSS?: {
+          highlights?: {
+            delete(name: string): void;
+          };
+        };
+      }
+    ).CSS?.highlights;
+
+    cssHighlights?.delete(TTS_HIGHLIGHT_NAME);
+  }, []);
+
+  const highlightRange = useCallback((range: Range) => {
+    if (typeof window === "undefined") return;
+
+    const HighlightConstructor = (
+      window as Window & {
+        Highlight?: new (...ranges: Range[]) => unknown;
+      }
+    ).Highlight;
+
+    const cssHighlights = (
+      window as Window & {
+        CSS?: {
+          highlights?: {
+            set(name: string, highlight: unknown): void;
+          };
+        };
+      }
+    ).CSS?.highlights;
+
+    if (!HighlightConstructor || !cssHighlights) return;
+
+    cssHighlights.set(TTS_HIGHLIGHT_NAME, new HighlightConstructor(range));
+  }, []);
+
+  const scrollRangeIntoView = useCallback((range: Range) => {
+    const scrollContainer = previewScrollRef.current;
+    if (!scrollContainer) return;
+
+    const rangeRect = range.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    const isVisible = rangeRect.top >= containerRect.top + 80 && rangeRect.bottom <= containerRect.bottom - 80;
+
+    if (isVisible) {
+      lastScrollTargetTopRef.current = null;
+      return;
+    }
+
+    const startElement =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : (range.startContainer as HTMLElement);
+
+    if (!startElement) return;
+
+    const targetTop = startElement.getBoundingClientRect().top;
+
+    if (lastScrollTargetTopRef.current !== null && Math.abs(lastScrollTargetTopRef.current - targetTop) < 8) {
+      return;
+    }
+
+    lastScrollTargetTopRef.current = targetTop;
+    startElement.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, []);
+
+  const updateSpokenWord = useCallback(
+    (charIndex: number) => {
+      const preview = previewScrollRef.current;
+      if (!preview) return;
+
+      const { text, segments } = collectSpeechTextSegments(preview);
+      const boundary = resolveWordBoundary(text, charIndex);
+
+      if (!boundary) {
+        clearWordHighlight();
+        return;
+      }
+
+      const currentWord = text.slice(boundary.start, boundary.end);
+
+      if (currentWord && currentWord === lastHighlightedWordRef.current) {
+        return;
+      }
+
+      const startSegment = findSegmentForOffset(segments, boundary.start);
+      const endSegment = findSegmentForOffset(segments, Math.max(boundary.end - 1, boundary.start));
+
+      if (!startSegment || !endSegment) {
+        clearWordHighlight();
+        return;
+      }
+
+      const range = document.createRange();
+      range.setStart(startSegment.node, boundary.start - startSegment.start);
+      range.setEnd(endSegment.node, boundary.end - endSegment.start);
+
+      highlightRange(range);
+      scrollRangeIntoView(range);
+      lastHighlightedWordRef.current = currentWord;
+    },
+    [clearWordHighlight, highlightRange, scrollRangeIntoView]
+  );
+
+  const stopTts = useCallback(() => {
+    activeSpeechRequestIdRef.current += 1;
+    ttsSentencesRef.current = [];
+    ttsCurrentSentenceIndexRef.current = 0;
+    ttsCurrentSentenceCharOffsetRef.current = 0;
+    ttsPlaybackStateRef.current = "idle";
+    setTtsPlaybackState("idle");
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+    cancelBrowserSpeech();
+  }, [clearWordHighlight]);
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+
+    stopTts();
+  }, [activeDocumentId, stopTts]);
+
+  const speakSentenceAtIndex = useCallback(
+    (sentenceIndex: number, requestId: number, startCharOffset = 0) => {
+      if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+        setTtsPlaybackState("idle");
+        setToast("Text-to-speech is not supported in this browser");
+        return;
+      }
+
+      const sentence = ttsSentencesRef.current[sentenceIndex];
+
+      if (!sentence) {
+        setTtsPlaybackState("idle");
+        clearWordHighlight();
+        lastScrollTargetTopRef.current = null;
+        return;
+      }
+
+      cancelBrowserSpeech();
+
+      const safeStartOffset = Math.min(Math.max(startCharOffset, 0), sentence.text.length);
+      const remainingRawText = sentence.text.slice(safeStartOffset);
+      const leadingTrim = remainingRawText.length - remainingRawText.trimStart().length;
+      const remainingText = remainingRawText.trimStart();
+
+      if (!remainingText) {
+        const nextSentenceIndex = sentenceIndex + 1;
+
+        if (nextSentenceIndex >= ttsSentencesRef.current.length) {
+          setTtsPlaybackState("idle");
+          clearWordHighlight();
+          lastScrollTargetTopRef.current = null;
+          return;
+        }
+
+        ttsCurrentSentenceCharOffsetRef.current = 0;
+        speakSentenceAtIndexRef.current?.(nextSentenceIndex, requestId, 0);
+        return;
+      }
+
+      const actualStartOffset = safeStartOffset + leadingTrim;
+
+      ttsCurrentSentenceIndexRef.current = sentenceIndex;
+      ttsCurrentSentenceCharOffsetRef.current = actualStartOffset;
+      ttsPlaybackStateRef.current = "playing";
+      setTtsPlaybackState("playing");
+
+      const utterance = new SpeechSynthesisUtterance(remainingText);
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(voice => voice.lang.toLowerCase().startsWith("en")) ?? voices[0];
+
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+
+      utterance.rate = 1;
+      utterance.pitch = 1;
+
+      utterance.onboundary = event => {
+        if (requestId !== activeSpeechRequestIdRef.current || ttsPlaybackStateRef.current === "paused") {
+          return;
+        }
+
+        if (typeof event.charIndex === "number") {
+          const absoluteSentenceOffset = actualStartOffset + event.charIndex;
+          ttsCurrentSentenceCharOffsetRef.current = absoluteSentenceOffset;
+          updateSpokenWord(sentence.start + absoluteSentenceOffset);
+        }
+      };
+
+      utterance.onend = () => {
+        if (requestId !== activeSpeechRequestIdRef.current) return;
+        if (ttsPlaybackStateRef.current === "paused") return;
+
+        const nextSentenceIndex = sentenceIndex + 1;
+
+        if (nextSentenceIndex >= ttsSentencesRef.current.length) {
+          ttsPlaybackStateRef.current = "idle";
+          setTtsPlaybackState("idle");
+          clearWordHighlight();
+          lastScrollTargetTopRef.current = null;
+          ttsCurrentSentenceCharOffsetRef.current = 0;
+          return;
+        }
+
+        ttsCurrentSentenceCharOffsetRef.current = 0;
+
+        window.setTimeout(() => {
+          if (requestId !== activeSpeechRequestIdRef.current) return;
+          if (ttsPlaybackStateRef.current !== "playing") return;
+
+          speakSentenceAtIndexRef.current?.(nextSentenceIndex, requestId, 0);
+        }, 80);
+      };
+
+      utterance.onerror = event => {
+        if (requestId !== activeSpeechRequestIdRef.current) return;
+
+        if (event.error === "interrupted" || event.error === "canceled") {
+          return;
+        }
+
+        ttsPlaybackStateRef.current = "idle";
+        setTtsPlaybackState("idle");
+        clearWordHighlight();
+        setToast("Text-to-speech failed");
+      };
+
+      window.speechSynthesis.speak(utterance);
+    },
+    [clearWordHighlight, updateSpokenWord]
+  );
+
+  useEffect(() => {
+    speakSentenceAtIndexRef.current = speakSentenceAtIndex;
+  }, [speakSentenceAtIndex]);
+
+  const speakDocument = useCallback(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      setTtsPlaybackState("idle");
+      setToast("Text-to-speech is not supported in this browser");
+      return;
+    }
+
+    const preview = previewScrollRef.current;
+    const text = preview ? collectSpeechTextSegments(preview).text : sourceRef.current;
+    const sentences = splitTextIntoSentences(text);
+
+    if (sentences.length === 0) {
+      setTtsPlaybackState("idle");
+      clearWordHighlight();
+      setToast("Nothing to read");
+      return;
+    }
+
+    activeSpeechRequestIdRef.current += 1;
+    const requestId = activeSpeechRequestIdRef.current;
+
+    cancelBrowserSpeech();
+    clearWordHighlight();
+    lastScrollTargetTopRef.current = null;
+
+    ttsSentencesRef.current = sentences;
+    ttsCurrentSentenceIndexRef.current = 0;
+    ttsCurrentSentenceCharOffsetRef.current = 0;
+
+    speakSentenceAtIndex(0, requestId, 0);
+  }, [clearWordHighlight, speakSentenceAtIndex]);
+
+  const startOrResumeTts = useCallback(() => {
+    if (!hasBrowserTts) {
+      setToast("Text-to-speech is not supported in this browser");
+      return;
+    }
+
+    if (isCheckingBrowserTts) {
+      setToast("Text-to-speech voices are loading. Try again.");
+      return;
+    }
+
+    if (!hasBrowserTtsVoices) {
+      setToast("No text-to-speech voices found in this browser");
+      return;
+    }
+
+    if (ttsPlaybackStateRef.current === "paused") {
+      activeSpeechRequestIdRef.current += 1;
+      const requestId = activeSpeechRequestIdRef.current;
+
+      const resumeSentenceIndex = ttsCurrentSentenceIndexRef.current;
+      const resumeCharOffset = Math.max(0, ttsCurrentSentenceCharOffsetRef.current - 8);
+
+      clearWordHighlight();
+      lastScrollTargetTopRef.current = null;
+
+      speakSentenceAtIndex(resumeSentenceIndex, requestId, resumeCharOffset);
+      return;
+    }
+
+    if (!showPreview) {
+      setViewMode("read");
+
+      window.setTimeout(() => {
+        speakDocument();
+      }, 120);
+
+      return;
+    }
+
+    speakDocument();
+  }, [
+    clearWordHighlight,
+    hasBrowserTts,
+    hasBrowserTtsVoices,
+    isCheckingBrowserTts,
+    showPreview,
+    speakDocument,
+    speakSentenceAtIndex,
+  ]);
+
+  const pauseTts = useCallback(() => {
+    if (ttsPlaybackStateRef.current !== "playing") return;
+
+    activeSpeechRequestIdRef.current += 1;
+    ttsPlaybackStateRef.current = "paused";
+    setTtsPlaybackState("paused");
+    cancelBrowserSpeech();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      activeSpeechRequestIdRef.current += 1;
+      cancelBrowserSpeech();
+      clearWordHighlight();
+    };
+  }, [clearWordHighlight]);
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length) void loadFiles(files);
@@ -722,6 +1121,10 @@ export function MarkdownStudio() {
           .markdown-body { padding: 2rem !important; }
         }
         .print-content { display: none; }
+        ::highlight(mdlens-tts-word) {
+          background: color-mix(in srgb, var(--accent) 28%, transparent);
+          color: inherit;
+        }
       `}</style>
 
       <div className="print-content">
@@ -731,7 +1134,7 @@ export function MarkdownStudio() {
       </div>
 
       <main
-        className={cx("h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6", zenMode && "zen-mode")}
+        className={cn("h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6", zenMode && "zen-mode")}
       >
         <section
           className="mx-auto flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]"
@@ -796,6 +1199,18 @@ export function MarkdownStudio() {
                   onClick={() => setFindOpen(o => !o)}
                   active={findOpen}
                 />
+                <IconButton
+                  icon={ttsPlaybackState === "paused" ? Play : Volume2}
+                  label={ttsPlaybackState === "idle" ? "Listen" : ttsPlaybackState === "paused" ? "Resume" : "Playing"}
+                  onClick={startOrResumeTts}
+                  active={ttsPlaybackState !== "idle"}
+                />
+
+                {ttsPlaybackState === "playing" ? (
+                  <IconButton icon={Pause} label="Pause" onClick={pauseTts} active />
+                ) : null}
+
+                {ttsPlaybackState !== "idle" ? <IconButton icon={Square} label="Stop" onClick={stopTts} /> : null}
                 <IconButton
                   icon={WrapText}
                   label={wordWrap ? "Word wrap on" : "Word wrap off"}
@@ -872,6 +1287,14 @@ export function MarkdownStudio() {
                     onClick={sheetAction(() => setZenMode(z => !z))}
                     active={zenMode}
                   />
+                  <IconButton
+                    icon={ttsPlaybackState === "paused" ? Play : Volume2}
+                    label={
+                      ttsPlaybackState === "idle" ? "Listen" : ttsPlaybackState === "paused" ? "Resume" : "Playing"
+                    }
+                    onClick={startOrResumeTts}
+                    active={ttsPlaybackState !== "idle"}
+                  />
                 </div>
 
                 <div className="py-1">
@@ -923,7 +1346,7 @@ export function MarkdownStudio() {
                   onDragOver={event => handleDocumentDragOver(event, document.id)}
                   onDragStart={event => handleDocumentDragStart(event, document.id)}
                   onDrop={event => handleDocumentDrop(event, document.id)}
-                  className={cx(
+                  className={cn(
                     "document-tab group flex max-w-[220px] shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
                     document.id === activeDocumentId
                       ? "border-[var(--line-strong)] bg-[var(--panel-muted)] text-[var(--text)]"
@@ -1063,7 +1486,7 @@ export function MarkdownStudio() {
                 aria-pressed={findCaseSensitive}
                 title={findCaseSensitive ? "Case-sensitive find" : "Case-insensitive find"}
                 onClick={() => setFindCaseSensitive(value => !value)}
-                className={cx(
+                className={cn(
                   "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
                   findCaseSensitive
                     ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
@@ -1116,14 +1539,14 @@ export function MarkdownStudio() {
 
           <div
             ref={splitContainerRef}
-            className={cx(
+            className={cn(
               "flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row",
               viewMode === "read" && "read-layout",
               isResizing && "select-none"
             )}
           >
             {viewMode === "read" ? (
-              <aside className={cx("toc-sidebar", tocOpen && "is-open")}>
+              <aside className={cn("toc-sidebar", tocOpen && "is-open")}>
                 <div className="toc-header">Contents</div>
                 <nav className="toc-list" aria-label="Table of contents">
                   {markdownDocument.headings.length ? (
@@ -1132,7 +1555,7 @@ export function MarkdownStudio() {
                         key={`${heading.id}-${heading.depth}-${heading.text}`}
                         href={`#${heading.id}`}
                         onClick={event => handleTocClick(event, heading.id)}
-                        className={cx("toc-item", `toc-depth-${heading.depth}`)}
+                        className={cn("toc-item", `toc-depth-${heading.depth}`)}
                       >
                         {heading.text}
                       </a>
@@ -1183,7 +1606,7 @@ export function MarkdownStudio() {
                 onPointerMove={handleResize}
                 onPointerUp={stopResize}
                 onPointerCancel={stopResize}
-                className={cx("split-divider hidden lg:flex", isResizing && "is-dragging")}
+                className={cn("split-divider hidden lg:flex", isResizing && "is-dragging")}
               >
                 <span aria-hidden className="split-divider-dots">
                   <span />
@@ -1198,7 +1621,7 @@ export function MarkdownStudio() {
 
             {showPreview ? (
               <section
-                className={cx(
+                className={cn(
                   "flex min-h-[420px] min-w-0 flex-1 flex-col border-t border-[var(--line)] lg:border-t-0",
                   viewMode === "read" && "read-scroll-wrap relative"
                 )}
@@ -1221,7 +1644,7 @@ export function MarkdownStudio() {
                 <article
                   ref={previewScrollRef}
                   style={{ fontSize: `${fontSize}px` }}
-                  className={cx("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
+                  className={cn("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
                   {markdownDocument.content.trim() ? (
                     <MarkdownRenderer
@@ -1252,13 +1675,13 @@ export function MarkdownStudio() {
             <span className="min-w-0 truncate">{filename ?? "Local draft"}</span>
 
             <span
-              className={cx(
+              className={cn(
                 "ml-auto flex items-center gap-1 transition-opacity duration-300",
                 savedStatus === "saved" ? "opacity-60" : "opacity-100"
               )}
             >
               <span
-                className={cx(
+                className={cn(
                   "inline-block h-1.5 w-1.5 rounded-full",
                   savedStatus === "saved" ? "bg-green-500" : "bg-amber-400"
                 )}
@@ -1267,13 +1690,13 @@ export function MarkdownStudio() {
             </span>
 
             {wordGoal > 0 && (
-              <span className={cx("flex items-center gap-1.5", wordGoalDone && "text-green-600")}>
+              <span className={cn("flex items-center gap-1.5", wordGoalDone && "text-green-600")}>
                 <span
                   className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-[var(--line)]"
                   title={`${stats.words} / ${wordGoal} words`}
                 >
                   <span
-                    className={cx(
+                    className={cn(
                       "absolute inset-y-0 left-0 rounded-full transition-all",
                       wordGoalDone ? "bg-green-500" : "bg-[var(--accent)]"
                     )}
@@ -1328,7 +1751,7 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-pressed={active}
-      className={cx(
+      className={cn(
         "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
         active
           ? "bg-[var(--accent-soft)] text-[var(--accent)]"
@@ -1394,7 +1817,7 @@ function MobileSheetRow({
     <button
       type="button"
       onClick={onClick}
-      className={cx(
+      className={cn(
         "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-[var(--panel-sunken)]",
         active ? "text-[var(--accent)]" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-[var(--text)]"
       )}
@@ -1533,7 +1956,7 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
                 setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
                 setOpen(false);
               }}
-              className={cx(
+              className={cn(
                 "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
                 maxWidth === preset.value
                   ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
@@ -1599,7 +2022,7 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
           type="button"
           variant="outline"
           size="sm"
-          className={cx(
+          className={cn(
             "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
             wordGoal > 0
               ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
@@ -1629,7 +2052,7 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
                 setInputValue(String(g));
                 setOpen(false);
               }}
-              className={cx(
+              className={cn(
                 "rounded-md border py-1 text-center font-bold shadow-none transition",
                 wordGoal === g
                   ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
@@ -1918,6 +2341,110 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
+function collectSpeechTextSegments(root: HTMLElement): { text: string; segments: SpeechTextNodeSegment[] } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const segments: SpeechTextNodeSegment[] = [];
+  let text = "";
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const node = currentNode as Text;
+    const value = node.textContent ?? "";
+
+    if (value.length > 0) {
+      segments.push({
+        node,
+        start: text.length,
+        end: text.length + value.length,
+      });
+      text += value;
+    }
+
+    currentNode = walker.nextNode();
+  }
+
+  return {
+    text: text.replace(/\u00a0/g, " "),
+    segments,
+  };
+}
+
+function splitTextIntoSentences(text: string): SpeechSentenceSegment[] {
+  const normalizedText = text.replace(/\u00a0/g, " ");
+  const sentenceRegex = /[^.!?।]+(?:[.!?।]+["')\]]*|$)/g;
+  const sentences: SpeechSentenceSegment[] = [];
+
+  for (const match of normalizedText.matchAll(sentenceRegex)) {
+    const rawText = match[0] ?? "";
+    const rawStart = match.index ?? 0;
+
+    const leadingWhitespaceLength = rawText.length - rawText.trimStart().length;
+    const trailingWhitespaceLength = rawText.length - rawText.trimEnd().length;
+    const sentenceText = rawText.trim();
+
+    if (!sentenceText) continue;
+
+    sentences.push({
+      text: sentenceText,
+      start: rawStart + leadingWhitespaceLength,
+      end: rawStart + rawText.length - trailingWhitespaceLength,
+    });
+  }
+
+  return sentences;
+}
+
+function isWordCharacter(value: string): boolean {
+  return /[\p{L}\p{N}'’-]/u.test(value);
+}
+
+function resolveWordBoundary(text: string, charIndex: number): { start: number; end: number } | null {
+  if (!text) return null;
+
+  let index = Math.min(Math.max(charIndex, 0), text.length - 1);
+
+  if (!isWordCharacter(text[index] ?? "")) {
+    let forward = index;
+
+    while (forward < text.length && !isWordCharacter(text[forward] ?? "")) {
+      forward += 1;
+    }
+
+    if (forward < text.length) {
+      index = forward;
+    } else {
+      let backward = index;
+
+      while (backward >= 0 && !isWordCharacter(text[backward] ?? "")) {
+        backward -= 1;
+      }
+
+      if (backward < 0) return null;
+      index = backward;
+    }
+  }
+
+  let start = index;
+
+  while (start > 0 && isWordCharacter(text[start - 1] ?? "")) {
+    start -= 1;
+  }
+
+  let end = index + 1;
+
+  while (end < text.length && isWordCharacter(text[end] ?? "")) {
+    end += 1;
+  }
+
+  return start < end ? { start, end } : null;
+}
+
+function findSegmentForOffset(segments: SpeechTextNodeSegment[], offset: number): SpeechTextNodeSegment | null {
+  return segments.find(segment => offset >= segment.start && offset < segment.end) ?? null;
+}
+
+function cancelBrowserSpeech() {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+  window.speechSynthesis.cancel();
 }
