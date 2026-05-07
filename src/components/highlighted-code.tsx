@@ -1,22 +1,43 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CopyButton } from "@/components/copy-button";
+import { toCodeFenceLanguage } from "@/lib/code-language";
+import { detectLanguageWithScoring } from "@/lib/detect-language-with-scoring";
 
 type HighlightedCodeProps = {
   code: string;
+  fenceStartOffset?: number;
   language?: string;
+  onLanguageSelect?: (language: string) => void;
 };
 
-export function HighlightedCode({ code, language }: HighlightedCodeProps) {
+export function HighlightedCode({ code, fenceStartOffset, language, onLanguageSelect }: HighlightedCodeProps) {
   const { resolvedTheme } = useTheme();
   const [html, setHtml] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const label = language?.trim() || "text";
+  const [selectedDetectedLanguage, setSelectedDetectedLanguage] = useState("");
+  const explicitLanguage = language?.trim();
+  const detectedLanguages = useMemo(() => {
+    if (explicitLanguage) return [];
+    return detectLanguageWithScoring(code).allScores.slice(0, 5);
+  }, [code, explicitLanguage]);
+  const topDetectedLanguage = detectedLanguages[0];
+  const defaultDetectedLanguage = topDetectedLanguage ? toCodeFenceLanguage(topDetectedLanguage.language) : "";
+  const highlightLanguage = explicitLanguage || "text";
+  const label = explicitLanguage || "text";
   const lineCount = code.trimEnd().split("\n").length;
+  const canApplyDetectedLanguage = Boolean(
+    !explicitLanguage && typeof fenceStartOffset === "number" && detectedLanguages.length > 0 && onLanguageSelect
+  );
+  const selectedLanguageToApply = selectedDetectedLanguage || defaultDetectedLanguage;
+
+  useEffect(() => {
+    setSelectedDetectedLanguage(defaultDetectedLanguage);
+  }, [defaultDetectedLanguage]);
 
   useEffect(() => {
     let active = true;
@@ -27,7 +48,7 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
 
       try {
         const shiki = await import("shiki");
-        const requestedLanguage = label.toLowerCase();
+        const requestedLanguage = highlightLanguage.toLowerCase();
         const languageName =
           requestedLanguage in shiki.bundledLanguages || requestedLanguage in shiki.bundledLanguagesAlias
             ? requestedLanguage
@@ -53,7 +74,7 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
     return () => {
       active = false;
     };
-  }, [code, label, resolvedTheme]);
+  }, [code, highlightLanguage, resolvedTheme]);
 
   async function copyCode() {
     if (!navigator.clipboard) {
@@ -74,7 +95,42 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
             {lineCount} {lineCount === 1 ? "line" : "lines"}
           </span>
         </span>
-        <CopyButton copied={copied} onClick={copyCode} />
+        <span className="flex items-center gap-2">
+          {canApplyDetectedLanguage ? (
+            <>
+              <span className="tracking-normal text-[var(--muted-soft)] normal-case">Detected</span>
+              <select
+                aria-label="Detected code language candidates"
+                className="min-h-8 max-w-44 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                onChange={event => setSelectedDetectedLanguage(event.target.value)}
+                title="Choose a language candidate"
+                value={selectedLanguageToApply}
+              >
+                {detectedLanguages.map(candidate => {
+                  const candidateLanguage = toCodeFenceLanguage(candidate.language);
+                  return (
+                    <option key={candidate.language} value={candidateLanguage}>
+                      {candidate.language} · {candidate.confidence} · {candidate.score}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                type="button"
+                className="inline-flex min-h-8 items-center rounded-md border border-[var(--line-strong)] px-2.5 text-[0.7rem] font-bold tracking-normal text-[var(--muted)] normal-case transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                disabled={!selectedLanguageToApply}
+                onClick={() => {
+                  if (!selectedLanguageToApply) return;
+                  onLanguageSelect?.(selectedLanguageToApply);
+                }}
+                title="Write this language into the markdown source fence"
+              >
+                Apply
+              </button>
+            </>
+          ) : null}
+          <CopyButton copied={copied} onClick={copyCode} />
+        </span>
       </figcaption>
       {html ? (
         <div dangerouslySetInnerHTML={{ __html: html }} />

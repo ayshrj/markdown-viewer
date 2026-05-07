@@ -38,6 +38,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
 import { useScreenSize } from "@/hooks/use-screen-size";
+import { toCodeFenceLanguage } from "@/lib/code-language";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
 import { ACTIVE_DOCUMENT_TITLE_COOKIE, SITE_NAME } from "@/lib/site";
@@ -360,6 +361,18 @@ export function MarkdownStudio() {
 
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
     updateSource(event.target.value);
+  }
+
+  function applyCodeFenceLanguage(fenceStartOffset: number, language: string) {
+    const nextSource = addLanguageToFence(source, fenceStartOffset, language);
+
+    if (nextSource === source) {
+      setToast("Could not update that code fence");
+      return;
+    }
+
+    updateSource(nextSource);
+    setToast(`Set code language to ${toCodeFenceLanguage(language)}`);
   }
 
   async function loadFiles(files: File[]) {
@@ -1081,7 +1094,11 @@ export function MarkdownStudio() {
                   className={cx("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
                   {markdownDocument.content.trim() ? (
-                    <MarkdownRenderer content={markdownDocument.content} onLinkClick={openLinkedDocument} />
+                    <MarkdownRenderer
+                      content={source}
+                      onCodeLanguageSelect={applyCodeFenceLanguage}
+                      onLinkClick={openLinkedDocument}
+                    />
                   ) : (
                     <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
                       <div>
@@ -1597,6 +1614,21 @@ function normalizeDocumentFilename(value: string): string {
   const trimmedValue = value.trim();
   if (!trimmedValue) return "";
   return isAcceptedMarkdownPath(trimmedValue) ? trimmedValue : `${trimmedValue}.md`;
+}
+
+function addLanguageToFence(source: string, fenceStartOffset: number, language: string): string {
+  const fenceLanguage = toCodeFenceLanguage(language);
+  if (!fenceLanguage || fenceStartOffset < 0 || fenceStartOffset >= source.length) return source;
+
+  const openingLineEnd = source.indexOf("\n", fenceStartOffset);
+  const lineEnd = openingLineEnd === -1 ? source.length : openingLineEnd;
+  const openingLine = source.slice(fenceStartOffset, lineEnd);
+  const match = /^([ \t]*)(`{3,}|~{3,})[ \t]*(.*)$/.exec(openingLine);
+
+  if (!match || match[3].trim()) return source;
+
+  const nextOpeningLine = `${match[1]}${match[2]} ${fenceLanguage}`;
+  return `${source.slice(0, fenceStartOffset)}${nextOpeningLine}${source.slice(lineEnd)}`;
 }
 
 function getDocumentPageTitle(filename: string | undefined): string {

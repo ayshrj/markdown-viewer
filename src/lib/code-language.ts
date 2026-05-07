@@ -1,0 +1,42 @@
+const LANGUAGE_ALIASES: Record<string, string> = {
+  "c#": "csharp",
+  "c++": "cpp",
+  "objective-c": "objective-c",
+  assembly: "asm",
+  bash: "bash",
+  css: "css",
+  dart: "dart",
+  dockerfile: "dockerfile",
+  go: "go",
+  haskell: "haskell",
+  html: "html",
+  ini: "ini",
+  java: "java",
+  javascript: "javascript",
+  json: "json",
+  kotlin: "kotlin",
+  latex: "latex",
+  lua: "lua",
+  markdown: "markdown",
+  matlab: "matlab",
+  mermaid: "mermaid",
+  perl: "perl",
+  php: "php",
+  powershell: "powershell",
+  python: "python",
+  r: "r",
+  regex: "regex",
+  ruby: "ruby",
+  rust: "rust",
+  scala: "scala",
+  sql: "sql",
+  swift: "swift",
+  typescript: "typescript",
+  xml: "xml",
+  yaml: "yaml",
+};
+
+export function toCodeFenceLanguage(language: string): string {
+  const normalizedLanguage = language.trim().toLowerCase();
+  return LANGUAGE_ALIASES[normalizedLanguage] ?? normalizedLanguage.replace(/[^a-z0-9_+-]+/g, "-");
+}

@@ -23,6 +23,7 @@ import { MermaidBlock } from "@/components/mermaid-block";
 
 type MarkdownRendererProps = {
   content: string;
+  onCodeLanguageSelect?: (fenceStartOffset: number, language: string) => void;
   onLinkClick?: (href: string) => boolean;
 };
 
@@ -40,6 +41,14 @@ type MdastNode = Node & {
   value?: string;
   children?: MdastNode[];
   data?: Record<string, unknown>;
+};
+
+type PositionedNode = {
+  position?: {
+    start?: {
+      offset?: number;
+    };
+  };
 };
 
 const CALLOUT_TYPES = new Set(["tip", "warning", "danger", "info", "note", "success"]);
@@ -244,7 +253,26 @@ function createHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
   };
 }
 
-function createComponents(onLinkClick: MarkdownRendererProps["onLinkClick"]): Components {
+function getNodeStartOffset(node: unknown): number | undefined {
+  const offset = (node as PositionedNode | undefined)?.position?.start?.offset;
+  return typeof offset === "number" && Number.isFinite(offset) ? offset : undefined;
+}
+
+function isFenceStartOffset(content: string, offset: number | undefined): boolean {
+  if (typeof offset !== "number") return false;
+
+  const lineStart = content.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
+  const lineEnd = content.indexOf("\n", offset);
+  const line = content.slice(lineStart, lineEnd === -1 ? content.length : lineEnd);
+
+  return /^[ \t]*(`{3,}|~{3,})/.test(line);
+}
+
+function createComponents(
+  content: string,
+  onLinkClick: MarkdownRendererProps["onLinkClick"],
+  onCodeLanguageSelect: MarkdownRendererProps["onCodeLanguageSelect"]
+): Components {
   return {
     a: ({ children, className, href, rel, target, title }) => {
       const safeHref = typeof href === "string" && isSafeUrl(href) ? href : undefined;
@@ -272,10 +300,12 @@ function createComponents(onLinkClick: MarkdownRendererProps["onLinkClick"]): Co
 
     blockquote: ({ children }) => <blockquote>{children}</blockquote>,
 
-    code: ({ children, className }) => {
+    code: ({ children, className, node }) => {
       const code = String(children).replace(/\n$/, "");
-      const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
-      const isBlock = Boolean(language) || code.includes("\n");
+      const language = /language-(\S+)/.exec(className ?? "")?.[1];
+      const fenceStartOffset = getNodeStartOffset(node);
+      const isFencedBlock = isFenceStartOffset(content, fenceStartOffset);
+      const isBlock = isFencedBlock || Boolean(language) || code.includes("\n");
 
       if (!isBlock) {
         return <code className={className}>{children}</code>;
@@ -285,7 +315,18 @@ function createComponents(onLinkClick: MarkdownRendererProps["onLinkClick"]): Co
         return <MermaidBlock code={code} />;
       }
 
-      return <HighlightedCode code={code} language={language ?? "text"} />;
+      return (
+        <HighlightedCode
+          code={code}
+          fenceStartOffset={fenceStartOffset}
+          language={language}
+          onLanguageSelect={
+            isFencedBlock && typeof fenceStartOffset === "number" && onCodeLanguageSelect
+              ? nextLanguage => onCodeLanguageSelect(fenceStartOffset, nextLanguage)
+              : undefined
+          }
+        />
+      );
     },
 
     h1: createHeading(1),
@@ -337,10 +378,10 @@ function createComponents(onLinkClick: MarkdownRendererProps["onLinkClick"]): Co
   };
 }
 
-export function MarkdownRenderer({ content, onLinkClick }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, onCodeLanguageSelect, onLinkClick }: MarkdownRendererProps) {
   return (
     <ReactMarkdown
-      components={createComponents(onLinkClick)}
+      components={createComponents(content, onLinkClick, onCodeLanguageSelect)}
       rehypePlugins={[
         rehypeRaw,
         [rehypeSanitize, sanitizeSchema],
