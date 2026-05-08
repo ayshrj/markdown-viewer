@@ -7,6 +7,7 @@ import {
   Download,
   FilePlus,
   FileText,
+  Gauge,
   List,
   Maximize2,
   Minimize2,
@@ -113,6 +114,7 @@ const STORAGE_KEYS = {
   fontSize: "markdown-reader:font-size",
   wordGoal: "markdown-reader:word-goal",
   zenMode: "markdown-reader:zen-mode",
+  ttsRate: "markdown-reader:tts-rate",
 };
 
 const ACCEPTED_EXTENSIONS = [".md", ".markdown", ".mdx", ".txt"];
@@ -129,6 +131,10 @@ const DOCUMENT_DRAG_TYPE = "application/x-mdlens-document-id";
 const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 22;
 const FONT_SIZE_DEFAULT = 15;
+const TTS_RATE_MIN = 0.7;
+const TTS_RATE_MAX = 1.8;
+const TTS_RATE_DEFAULT = 1;
+const TTS_RATE_STEP = 0.1;
 const FIND_DEBOUNCE_MS = 180;
 const TTS_HIGHLIGHT_NAME = "mdlens-tts-current";
 const TTS_READABLE_BLOCK_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,summary,dt,dd";
@@ -216,6 +222,7 @@ export function MarkdownStudio() {
   const ttsPlaybackStateRef = useRef<TtsPlaybackState>("idle");
   const ttsHighlightModeRef = useRef<TtsHighlightMode>("sentence");
   const ttsReadModeRef = useRef<TtsReadMode>("document");
+  const ttsRateRef = useRef(TTS_RATE_DEFAULT);
   const ttsSentencesRef = useRef<SpeechSentenceSegment[]>([]);
   const ttsCurrentSentenceIndexRef = useRef(0);
   const ttsCurrentSentenceCharOffsetRef = useRef(0);
@@ -260,6 +267,7 @@ export function MarkdownStudio() {
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
   const [ttsPlaybackState, setTtsPlaybackState] = useState<TtsPlaybackState>("idle");
   const [ttsHighlightMode, setTtsHighlightMode] = useState<TtsHighlightMode>("sentence");
+  const [ttsRate, setTtsRate] = useState(TTS_RATE_DEFAULT);
   const [previewReadPopover, setPreviewReadPopover] = useState<PreviewReadPopoverState | null>(null);
 
   const activeDocument = getActiveDocument(documents, activeDocumentId);
@@ -409,6 +417,7 @@ export function MarkdownStudio() {
     const storedFontSize = Number(window.localStorage.getItem(STORAGE_KEYS.fontSize));
     const storedWordGoal = Number(window.localStorage.getItem(STORAGE_KEYS.wordGoal));
     const storedZenMode = window.localStorage.getItem(STORAGE_KEYS.zenMode);
+    const storedTtsRate = Number(window.localStorage.getItem(STORAGE_KEYS.ttsRate));
 
     if (storedDocuments.length) {
       setDocuments(storedDocuments);
@@ -440,6 +449,7 @@ export function MarkdownStudio() {
     if (Number.isFinite(storedFontSize) && storedFontSize >= FONT_SIZE_MIN) setFontSize(storedFontSize);
     if (Number.isFinite(storedWordGoal) && storedWordGoal > 0) setWordGoal(storedWordGoal);
     if (storedZenMode === "true") setZenMode(true);
+    if (Number.isFinite(storedTtsRate)) setTtsRate(clampTtsRate(storedTtsRate));
 
     setMounted(true);
   }, [setTheme]);
@@ -501,6 +511,9 @@ export function MarkdownStudio() {
   useEffect(() => {
     if (mounted) window.localStorage.setItem(STORAGE_KEYS.zenMode, String(zenMode));
   }, [mounted, zenMode]);
+  useEffect(() => {
+    if (mounted) window.localStorage.setItem(STORAGE_KEYS.ttsRate, ttsRate.toFixed(1));
+  }, [mounted, ttsRate]);
 
   useEffect(() => {
     previewScrollRef.current?.scrollTo({ top: 0 });
@@ -638,6 +651,10 @@ export function MarkdownStudio() {
   useEffect(() => {
     ttsHighlightModeRef.current = ttsHighlightMode;
   }, [ttsHighlightMode]);
+
+  useEffect(() => {
+    ttsRateRef.current = ttsRate;
+  }, [ttsRate]);
 
   const clearWordHighlight = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -923,7 +940,7 @@ export function MarkdownStudio() {
         utterance.voice = preferredVoice;
       }
 
-      utterance.rate = 1;
+      utterance.rate = ttsRateRef.current;
       utterance.pitch = 1;
 
       utterance.onboundary = event => {
@@ -1644,6 +1661,7 @@ export function MarkdownStudio() {
                     <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
                   </>
                 ) : null}
+                <TtsRatePopover rate={ttsRate} onChange={setTtsRate} />
                 <IconButton
                   icon={WrapText}
                   label={wordWrap ? "Word wrap on" : "Word wrap off"}
@@ -1733,6 +1751,7 @@ export function MarkdownStudio() {
                       <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
                     </>
                   ) : null}
+                  <TtsRatePopover rate={ttsRate} onChange={setTtsRate} />
                 </div>
 
                 <div className="py-1">
@@ -1773,6 +1792,7 @@ export function MarkdownStudio() {
                   <IconButton icon={RefreshCcw} label="Restart reading" onClick={restartTts} />
                 </>
               ) : null}
+              <TtsRatePopover rate={ttsRate} onChange={setTtsRate} />
               <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
               <Button
                 type="button"
@@ -2384,6 +2404,58 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
   );
 }
 
+function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number) => void }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+        >
+          <Gauge aria-hidden size={13} />
+          {formatTtsRate(rate)}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-56 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        role="dialog"
+        aria-label="Text-to-speech speed"
+      >
+        <p className="mb-1 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Reading speed</p>
+        <p className="mb-3 text-[0.72rem] text-[var(--muted)]">Applies to the next spoken sentence.</p>
+        <Slider
+          min={TTS_RATE_MIN}
+          max={TTS_RATE_MAX}
+          step={TTS_RATE_STEP}
+          value={[rate]}
+          onValueChange={([nextRate]) => {
+            if (typeof nextRate === "number") onChange(clampTtsRate(nextRate));
+          }}
+          className="[&_[data-slot=slider-range]]:bg-[var(--accent)] [&_[data-slot=slider-thumb]]:border-[var(--accent)] [&_[data-slot=slider-thumb]]:bg-[var(--panel)] [&_[data-slot=slider-track]]:bg-[var(--panel-sunken)]"
+          aria-label="Text-to-speech speed slider"
+        />
+        <div className="mt-2 flex justify-between text-[0.68rem] text-[var(--muted-soft)]">
+          <span>{formatTtsRate(TTS_RATE_MIN)}</span>
+          <span className="font-bold text-[var(--text)]">{formatTtsRate(rate)}</span>
+          <span>{formatTtsRate(TTS_RATE_MAX)}</span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange(TTS_RATE_DEFAULT)}
+          className="mt-3 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+        >
+          Reset to normal ({formatTtsRate(TTS_RATE_DEFAULT)})
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const [customValue, setCustomValue] = useState(String(maxWidth));
@@ -2982,6 +3054,14 @@ function clampSplitPercent(value: number) {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function clampTtsRate(value: number) {
+  return clampNumber(Number(value.toFixed(1)), TTS_RATE_MIN, TTS_RATE_MAX);
+}
+
+function formatTtsRate(value: number) {
+  return `${value.toFixed(1)}x`;
 }
 
 function capitalize(value: string) {
