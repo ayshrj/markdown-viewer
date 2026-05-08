@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBrowserTts } from "@/hooks/use-browser-tts";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
@@ -1530,7 +1531,7 @@ export function MarkdownStudio() {
   const wordGoalDone = wordGoal > 0 && stats.words >= wordGoal;
 
   return (
-    <>
+    <TooltipProvider delayDuration={180}>
       <style>{`
         @media print {
           body > * { display: none !important; }
@@ -1557,19 +1558,50 @@ export function MarkdownStudio() {
         >
           {!zenMode && (
             <header className="flex items-center gap-1 border-b border-(--line) bg-(--panel-muted) px-3 py-2">
-              <h1 className="text-muted mr-1 inline-flex items-center gap-2 text-[0.8rem] font-bold tracking-[0.08em] uppercase">
-                <MDLensIcon
-                  aria-hidden
-                  className="mdlens-icon size-5 rounded-xl"
-                  focusable="false"
-                  showSubtitle={false}
-                  size={20}
-                />
-                <span className="xs:inline hidden">
-                  <span className="mdlens-wordmark-primary">MD</span>
-                  <span className="mdlens-wordmark-accent">Lens</span>
-                </span>
-              </h1>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <h1
+                    tabIndex={0}
+                    className="text-muted focus-visible:ring-accent/50 mr-1 inline-flex cursor-help items-center gap-2 rounded-md text-[0.8rem] font-bold tracking-[0.08em] uppercase outline-none focus-visible:ring-2"
+                  >
+                    <MDLensIcon
+                      aria-hidden
+                      className="mdlens-icon size-5 rounded-xl"
+                      focusable="false"
+                      showSubtitle={false}
+                      size={20}
+                    />
+                    <span className="xs:inline hidden">
+                      <span className="mdlens-wordmark-primary">MD</span>
+                      <span className="mdlens-wordmark-accent">Lens</span>
+                    </span>
+                  </h1>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  sideOffset={8}
+                  className="text-foreground border border-(--line-strong) bg-(--panel) px-3 py-2 text-left shadow-xl"
+                >
+                  <div className="flex items-center gap-2">
+                    <MDLensIcon
+                      aria-hidden
+                      className="mdlens-icon size-7 rounded-xl"
+                      focusable="false"
+                      showSubtitle={false}
+                      size={28}
+                    />
+                    <div>
+                      <p className="text-sm font-black tracking-[0.08em] uppercase">
+                        <span className="mdlens-wordmark-primary">MD</span>
+                        <span className="mdlens-wordmark-accent">Lens</span>
+                      </p>
+                      <p className="text-muted mt-0.5 text-[0.7rem] font-medium">
+                        Markdown studio, preview lens, and calm reader.
+                      </p>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
 
               <div className="mx-2 h-5 w-px bg-(--line)" />
 
@@ -1673,16 +1705,18 @@ export function MarkdownStudio() {
                 />
                 <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setMobileSheetOpen(true)}
-                  aria-label="More actions"
-                  className="text-muted hover:text-foreground h-8 w-8 rounded-md bg-transparent shadow-none transition hover:bg-(--panel-sunken)"
-                >
-                  <MoreHorizontal aria-hidden size={15} />
-                </Button>
+                <ButtonTooltip label="More actions">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setMobileSheetOpen(true)}
+                    aria-label="More actions"
+                    className="text-muted hover:text-foreground h-8 w-8 rounded-md bg-transparent shadow-none transition hover:bg-(--panel-sunken)"
+                  >
+                    <MoreHorizontal aria-hidden size={15} />
+                  </Button>
+                </ButtonTooltip>
               </div>
 
               <MobileToolbarSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)}>
@@ -1761,16 +1795,18 @@ export function MarkdownStudio() {
               ) : null}
               <TtsRatePopover rate={ttsRate} onChange={setTtsRate} />
               <IconButton icon={themeIcon} label={`Theme: ${capitalize(selectedTheme)}`} onClick={cycleTheme} />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setZenMode(false)}
-                className="text-muted hover:text-foreground h-auto gap-1.5 bg-transparent px-2 py-1 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
-              >
-                <Minimize2 aria-hidden size={12} />
-                Exit Zen
-              </Button>
+              <ButtonTooltip label="Exit Zen mode">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setZenMode(false)}
+                  className="text-muted hover:text-foreground h-auto gap-1.5 bg-transparent px-2 py-1 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
+                >
+                  <Minimize2 aria-hidden size={12} />
+                  Exit Zen
+                </Button>
+              </ButtonTooltip>
             </div>
           )}
 
@@ -1795,28 +1831,30 @@ export function MarkdownStudio() {
                       "border-accent bg-(--accent-soft)"
                   )}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveDocumentId(document.id);
-                      setRenamePopoverOpen(false);
-                    }}
-                    className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
-                    title={getDocumentLabel(document, index)}
-                    aria-current={document.id === activeDocumentId ? "page" : undefined}
-                  >
-                    {getDocumentLabel(document, index)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeDocument(document.id)}
-                    draggable={false}
-                    className="hover:text-foreground rounded px-1.5 py-1.5 text-(--muted-soft) opacity-80 transition hover:bg-(--panel-sunken) sm:opacity-0 sm:group-hover:opacity-100"
-                    aria-label={`Close ${getDocumentLabel(document, index)}`}
-                    title="Close document"
-                  >
-                    ×
-                  </button>
+                  <ButtonTooltip label={`Open ${getDocumentLabel(document, index)}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveDocumentId(document.id);
+                        setRenamePopoverOpen(false);
+                      }}
+                      className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
+                      aria-current={document.id === activeDocumentId ? "page" : undefined}
+                    >
+                      {getDocumentLabel(document, index)}
+                    </button>
+                  </ButtonTooltip>
+                  <ButtonTooltip label={`Close ${getDocumentLabel(document, index)}`}>
+                    <button
+                      type="button"
+                      onClick={() => removeDocument(document.id)}
+                      draggable={false}
+                      className="hover:text-foreground rounded px-1.5 py-1.5 text-(--muted-soft) opacity-80 transition hover:bg-(--panel-sunken) sm:opacity-0 sm:group-hover:opacity-100"
+                      aria-label={`Close ${getDocumentLabel(document, index)}`}
+                    >
+                      ×
+                    </button>
+                  </ButtonTooltip>
                 </div>
               ))}
             </div>
@@ -1830,17 +1868,22 @@ export function MarkdownStudio() {
                 setRenamePopoverOpen(false);
               }}
             >
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-muted hover:text-foreground min-h-8 shrink-0 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken)"
-                >
-                  <Pencil aria-hidden size={13} />
-                  Rename
-                </Button>
-              </PopoverTrigger>
+              <Tooltip>
+                <PopoverTrigger asChild>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-muted hover:text-foreground min-h-8 shrink-0 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken)"
+                    >
+                      <Pencil aria-hidden size={13} />
+                      Rename
+                    </Button>
+                  </TooltipTrigger>
+                </PopoverTrigger>
+                <TooltipContent sideOffset={8}>Rename active document</TooltipContent>
+              </Tooltip>
               <PopoverContent
                 align="end"
                 className="text-foreground w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
@@ -1856,23 +1899,27 @@ export function MarkdownStudio() {
                     autoFocus
                   />
                   <div className="mt-3 flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRenamePopoverOpen(false)}
-                      className="text-muted hover:text-foreground rounded-md border-(--line) bg-transparent px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      size="sm"
-                      className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
-                    >
-                      Save
-                    </Button>
+                    <ButtonTooltip label="Cancel rename">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRenamePopoverOpen(false)}
+                        className="text-muted hover:text-foreground rounded-md border-(--line) bg-transparent px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
+                      >
+                        Cancel
+                      </Button>
+                    </ButtonTooltip>
+                    <ButtonTooltip label="Save document name">
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        size="sm"
+                        className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
+                      >
+                        Save
+                      </Button>
+                    </ButtonTooltip>
                   </div>
                 </form>
               </PopoverContent>
@@ -1917,61 +1964,70 @@ export function MarkdownStudio() {
                   className="border-t-accent h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-(--line-strong)"
                 />
               ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-pressed={findCaseSensitive}
-                title={findCaseSensitive ? "Case-sensitive find" : "Case-insensitive find"}
-                onClick={() => setFindCaseSensitive(value => !value)}
-                className={cn(
-                  "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
-                  findCaseSensitive
-                    ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
-                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:bg-(--panel-sunken)"
-                )}
-              >
-                Aa
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => moveFindSelection(-1)}
-                disabled={findPending || !findMatchCount}
-                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => moveFindSelection(1)}
-                disabled={findPending || !findMatchCount}
-                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Next
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={applyReplace}
-                disabled={findPending || !findQuery.trim() || findMatchCount === 0}
-                className="border-accent text-foreground h-7 shrink-0 rounded-md bg-(--accent-soft) px-3 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Replace all
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={closeFind}
-                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
-              >
-                Close
-              </Button>
+              <ButtonTooltip label={findCaseSensitive ? "Case-sensitive find" : "Case-insensitive find"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={findCaseSensitive}
+                  onClick={() => setFindCaseSensitive(value => !value)}
+                  className={cn(
+                    "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
+                    findCaseSensitive
+                      ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
+                      : "text-muted hover:text-foreground border-(--line) bg-transparent hover:bg-(--panel-sunken)"
+                  )}
+                >
+                  Aa
+                </Button>
+              </ButtonTooltip>
+              <ButtonTooltip label="Previous match">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => moveFindSelection(-1)}
+                  disabled={findPending || !findMatchCount}
+                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </Button>
+              </ButtonTooltip>
+              <ButtonTooltip label="Next match">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => moveFindSelection(1)}
+                  disabled={findPending || !findMatchCount}
+                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </Button>
+              </ButtonTooltip>
+              <ButtonTooltip label="Replace every current match">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={applyReplace}
+                  disabled={findPending || !findQuery.trim() || findMatchCount === 0}
+                  className="border-accent text-foreground h-7 shrink-0 rounded-md bg-(--accent-soft) px-3 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Replace all
+                </Button>
+              </ButtonTooltip>
+              <ButtonTooltip label="Close find and replace">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={closeFind}
+                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
+                >
+                  Close
+                </Button>
+              </ButtonTooltip>
             </div>
           )}
 
@@ -2036,25 +2092,26 @@ export function MarkdownStudio() {
             ) : null}
 
             {viewMode === "split" ? (
-              <button
-                type="button"
-                aria-label="Resize editor and preview panes"
-                title="Drag to resize"
-                onPointerDown={startResize}
-                onPointerMove={handleResize}
-                onPointerUp={stopResize}
-                onPointerCancel={stopResize}
-                className={cn("split-divider hidden lg:flex", isResizing && "is-dragging")}
-              >
-                <span aria-hidden className="split-divider-dots">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </button>
+              <ButtonTooltip label="Drag to resize editor and preview">
+                <button
+                  type="button"
+                  aria-label="Resize editor and preview panes"
+                  onPointerDown={startResize}
+                  onPointerMove={handleResize}
+                  onPointerUp={stopResize}
+                  onPointerCancel={stopResize}
+                  className={cn("split-divider hidden lg:flex", isResizing && "is-dragging")}
+                >
+                  <span aria-hidden className="split-divider-dots">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </button>
+              </ButtonTooltip>
             ) : null}
 
             {showPreview ? (
@@ -2065,16 +2122,17 @@ export function MarkdownStudio() {
                 )}
               >
                 {viewMode === "read" ? (
-                  <button
-                    type="button"
-                    onClick={() => setTocOpen(open => !open)}
-                    className="toc-toggle"
-                    title="Toggle table of contents"
-                    aria-label="Toggle table of contents"
-                    aria-expanded={tocOpen}
-                  >
-                    <List aria-hidden size={14} />
-                  </button>
+                  <ButtonTooltip label={tocOpen ? "Hide table of contents" : "Show table of contents"}>
+                    <button
+                      type="button"
+                      onClick={() => setTocOpen(open => !open)}
+                      className="toc-toggle"
+                      aria-label="Toggle table of contents"
+                      aria-expanded={tocOpen}
+                    >
+                      <List aria-hidden size={14} />
+                    </button>
+                  </ButtonTooltip>
                 ) : null}
                 <div className="border-b border-(--line) bg-(--panel-muted) px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-(--muted-soft) uppercase">
                   {previewPending ? "Previewing..." : "Preview"}
@@ -2159,26 +2217,30 @@ export function MarkdownStudio() {
               <Volume2 aria-hidden size={13} />
               Read
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => startTtsFromPreviewSelection("document")}
-              disabled={!canReadPreviewSelection}
-              className="text-muted hover:text-foreground h-7 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Start from here
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => startTtsFromPreviewSelection("selection")}
-              disabled={!canReadPreviewSelection}
-              className="border-accent text-foreground h-7 rounded-md bg-(--accent-soft) px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Read selection
-            </Button>
+            <ButtonTooltip label="Read from the selected text to the end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => startTtsFromPreviewSelection("document")}
+                disabled={!canReadPreviewSelection}
+                className="text-muted hover:text-foreground h-7 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Start from here
+              </Button>
+            </ButtonTooltip>
+            <ButtonTooltip label="Read only the selected text">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => startTtsFromPreviewSelection("selection")}
+                disabled={!canReadPreviewSelection}
+                className="border-accent text-foreground h-7 rounded-md bg-(--accent-soft) px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Read selection
+              </Button>
+            </ButtonTooltip>
           </div>
         ) : null}
 
@@ -2192,7 +2254,7 @@ export function MarkdownStudio() {
           </div>
         ) : null}
       </main>
-    </>
+    </TooltipProvider>
   );
 }
 
@@ -2210,25 +2272,45 @@ function IconButton({
   variant?: "default" | "danger";
 }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      className={cn(
-        "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
-        active
-          ? "text-accent bg-(--accent-soft)"
-          : variant === "danger"
-            ? "text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-            : "text-muted hover:text-foreground hover:bg-(--panel-sunken)"
-      )}
-    >
-      <Icon aria-hidden size={15} />
-    </Button>
+    <ButtonTooltip label={label}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
+          active
+            ? "text-accent bg-(--accent-soft)"
+            : variant === "danger"
+              ? "text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+              : "text-muted hover:text-foreground hover:bg-(--panel-sunken)"
+        )}
+      >
+        <Icon aria-hidden size={15} />
+      </Button>
+    </ButtonTooltip>
+  );
+}
+
+function ButtonTooltip({
+  label,
+  children,
+  side = "top",
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+  side?: React.ComponentProps<typeof TooltipContent>["side"];
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side} sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -2281,18 +2363,20 @@ function MobileSheetRow({
   variant?: "danger";
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-(--panel-sunken)",
-        active ? "text-accent" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-foreground"
-      )}
-    >
-      <Icon aria-hidden size={18} className="text-muted shrink-0" />
-      {label}
-      {active && <span className="text-accent ml-auto text-xs font-bold">On</span>}
-    </button>
+    <ButtonTooltip label={label} side="left">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-(--panel-sunken)",
+          active ? "text-accent" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-foreground"
+        )}
+      >
+        <Icon aria-hidden size={18} className="text-muted shrink-0" />
+        {label}
+        {active && <span className="text-accent ml-auto text-xs font-bold">On</span>}
+      </button>
+    </ButtonTooltip>
   );
 }
 
@@ -2301,17 +2385,22 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-        >
-          <Type aria-hidden size={13} />
-          {fontSize}px
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
+            >
+              <Type aria-hidden size={13} />
+              {fontSize}px
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent sideOffset={8}>Change editor and preview font size</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="end"
         className="text-foreground w-52 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
@@ -2320,16 +2409,18 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
       >
         <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Font size</p>
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
-            className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
-            aria-label="Decrease font size"
-          >
-            −
-          </Button>
+          <ButtonTooltip label="Decrease font size">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
+              className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
+              aria-label="Decrease font size"
+            >
+              −
+            </Button>
+          </ButtonTooltip>
           <Slider
             min={FONT_SIZE_MIN}
             max={FONT_SIZE_MAX}
@@ -2341,31 +2432,35 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
             className="**:data-[slot=slider-range]:bg-accent **:data-[slot=slider-thumb]:border-accent flex-1 **:data-[slot=slider-thumb]:bg-(--panel) **:data-[slot=slider-track]:bg-(--panel-sunken)"
             aria-label="Font size slider"
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
-            className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
-            aria-label="Increase font size"
-          >
-            +
-          </Button>
+          <ButtonTooltip label="Increase font size">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
+              className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
+              aria-label="Increase font size"
+            >
+              +
+            </Button>
+          </ButtonTooltip>
         </div>
         <div className="mt-2 flex justify-between text-[0.68rem] text-(--muted-soft)">
           <span>{FONT_SIZE_MIN}px</span>
           <span className="text-foreground font-bold">{fontSize}px</span>
           <span>{FONT_SIZE_MAX}px</span>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange(FONT_SIZE_DEFAULT)}
-          className="text-muted hover:text-foreground mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
-        >
-          Reset to default ({FONT_SIZE_DEFAULT}px)
-        </Button>
+        <ButtonTooltip label="Reset font size to default">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onChange(FONT_SIZE_DEFAULT)}
+            className="text-muted hover:text-foreground mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
+          >
+            Reset to default ({FONT_SIZE_DEFAULT}px)
+          </Button>
+        </ButtonTooltip>
       </PopoverContent>
     </Popover>
   );
@@ -2374,17 +2469,22 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
 function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number) => void }) {
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-        >
-          <Gauge aria-hidden size={13} />
-          {formatTtsRate(rate)}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
+            >
+              <Gauge aria-hidden size={13} />
+              {formatTtsRate(rate)}
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent sideOffset={8}>Adjust reading speed</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="end"
         className="text-foreground w-56 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
@@ -2409,15 +2509,17 @@ function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number
           <span className="text-foreground font-bold">{formatTtsRate(rate)}</span>
           <span>{formatTtsRate(TTS_RATE_MAX)}</span>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange(TTS_RATE_DEFAULT)}
-          className="text-muted hover:text-foreground mt-3 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
-        >
-          Reset to normal ({formatTtsRate(TTS_RATE_DEFAULT)})
-        </Button>
+        <ButtonTooltip label="Reset reading speed to normal">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onChange(TTS_RATE_DEFAULT)}
+            className="text-muted hover:text-foreground mt-3 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
+          >
+            Reset to normal ({formatTtsRate(TTS_RATE_DEFAULT)})
+          </Button>
+        </ButtonTooltip>
       </PopoverContent>
     </Popover>
   );
@@ -2445,17 +2547,22 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-        >
-          <AlignLeft aria-hidden size={13} />
-          Width
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
+            >
+              <AlignLeft aria-hidden size={13} />
+              Width
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent sideOffset={8}>Set content max width</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="end"
         className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
@@ -2465,26 +2572,27 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
         <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Max content width</p>
         <div className="mb-2 grid grid-cols-2 gap-1.5">
           {PRESETS.map(preset => (
-            <Button
-              key={preset.value}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onChange(preset.value);
-                setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
-                maxWidth === preset.value
-                  ? "border-accent text-foreground bg-(--accent-soft)"
-                  : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
-              )}
-            >
-              {preset.label}
-              {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
-            </Button>
+            <ButtonTooltip key={preset.value} label={`Set max width to ${preset.label}`}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onChange(preset.value);
+                  setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
+                  setOpen(false);
+                }}
+                className={cn(
+                  "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
+                  maxWidth === preset.value
+                    ? "border-accent text-foreground bg-(--accent-soft)"
+                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
+                )}
+              >
+                {preset.label}
+                {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
+              </Button>
+            </ButtonTooltip>
           ))}
         </div>
         <form onSubmit={applyCustom} className="flex gap-1.5">
@@ -2494,14 +2602,16 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
             placeholder="e.g. 960"
             className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
           />
-          <Button
-            type="submit"
-            variant="outline"
-            size="sm"
-            className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
-          >
-            Set
-          </Button>
+          <ButtonTooltip label="Apply custom width">
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
+            >
+              Set
+            </Button>
+          </ButtonTooltip>
         </form>
       </PopoverContent>
     </Popover>
@@ -2536,22 +2646,27 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
         setOpen(nextOpen);
       }}
     >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
-            wordGoal > 0
-              ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
-              : "text-muted hover:text-foreground border-(--line-strong) bg-transparent hover:bg-(--panel-sunken)"
-          )}
-        >
-          <Target aria-hidden size={13} />
-          Goal
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
+                wordGoal > 0
+                  ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
+                  : "text-muted hover:text-foreground border-(--line-strong) bg-transparent hover:bg-(--panel-sunken)"
+              )}
+            >
+              <Target aria-hidden size={13} />
+              Goal
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent sideOffset={8}>Set writing word goal</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="end"
         className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
@@ -2561,25 +2676,26 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
         <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Word goal</p>
         <div className="mb-2 grid grid-cols-4 gap-1">
           {QUICK_GOALS.map(g => (
-            <Button
-              key={g}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onChange(g);
-                setInputValue(String(g));
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded-md border py-1 text-center font-bold shadow-none transition",
-                wordGoal === g
-                  ? "border-accent text-foreground bg-(--accent-soft)"
-                  : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
-              )}
-            >
-              {g}
-            </Button>
+            <ButtonTooltip key={g} label={`Set word goal to ${g}`}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onChange(g);
+                  setInputValue(String(g));
+                  setOpen(false);
+                }}
+                className={cn(
+                  "rounded-md border py-1 text-center font-bold shadow-none transition",
+                  wordGoal === g
+                    ? "border-accent text-foreground bg-(--accent-soft)"
+                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
+                )}
+              >
+                {g}
+              </Button>
+            </ButtonTooltip>
           ))}
         </div>
         <form onSubmit={handleSubmit} className="flex gap-1.5">
@@ -2591,29 +2707,33 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
             min={1}
             className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
           />
-          <Button
-            type="submit"
-            variant="outline"
-            size="sm"
-            className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
-          >
-            Set
-          </Button>
+          <ButtonTooltip label="Apply custom word goal">
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
+            >
+              Set
+            </Button>
+          </ButtonTooltip>
         </form>
         {wordGoal > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              onChange(0);
-              setInputValue("");
-              setOpen(false);
-            }}
-            className="text-muted mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken) hover:text-(--danger)"
-          >
-            Clear goal
-          </Button>
+          <ButtonTooltip label="Clear word goal">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onChange(0);
+                setInputValue("");
+                setOpen(false);
+              }}
+              className="text-muted mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken) hover:text-(--danger)"
+            >
+              Clear goal
+            </Button>
+          </ButtonTooltip>
         )}
       </PopoverContent>
     </Popover>

@@ -4,6 +4,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   SITE_DESCRIPTION,
   SITE_ICON_PATH,
@@ -89,7 +90,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
-        <ThemeProvider>{children}</ThemeProvider>
+        <TooltipProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </TooltipProvider>
       </body>
     </html>
   );
