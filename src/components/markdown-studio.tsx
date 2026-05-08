@@ -36,7 +36,7 @@ import type {
   PointerEvent,
   SyntheticEvent,
 } from "react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
@@ -89,6 +89,13 @@ type PreviewReadPopoverState = {
   end: number | null;
   left: number;
   top: number;
+};
+
+type PreviewContentProps = {
+  hasContent: boolean;
+  source: string;
+  onCodeLanguageSelect: (fenceStartOffset: number, language: string) => void;
+  onLinkClick: (href: string) => boolean;
 };
 
 const STORAGE_KEYS = {
@@ -167,6 +174,27 @@ const TTS_SKIP_SELECTOR = [
   "[data-tts-skip='true']",
 ].join(",");
 
+const PreviewContent = memo(function PreviewContent({
+  hasContent,
+  source,
+  onCodeLanguageSelect,
+  onLinkClick,
+}: PreviewContentProps) {
+  if (!hasContent) {
+    return (
+      <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
+        <div>
+          <FileText aria-hidden className="mx-auto mb-3 text-[var(--muted-soft)]" size={34} />
+          <p className="font-bold text-[var(--text)]">Nothing to preview yet</p>
+          <p className="mt-1">Write or upload markdown to begin.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <MarkdownRenderer content={source} onCodeLanguageSelect={onCodeLanguageSelect} onLinkClick={onLinkClick} />;
+});
+
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -175,8 +203,11 @@ export function MarkdownStudio() {
   const previewScrollRef = useRef<HTMLElement>(null);
   const dragDepthRef = useRef(0);
   const loadFilesRef = useRef<(files: File[]) => Promise<void>>(async () => {});
+  const applyCodeFenceLanguageRef = useRef<(fenceStartOffset: number, language: string) => void>(() => {});
+  const openLinkedDocumentRef = useRef<(href: string) => boolean>(() => false);
   const savedAtRef = useRef<number>(0);
   const previewSelectionTimeoutRef = useRef<number | null>(null);
+  const previewReadPopoverKeyRef = useRef<string | null>(null);
   const activeSpeechRequestIdRef = useRef(0);
   const sourceRef = useRef("");
   const lastHighlightedWordRef = useRef<string | null>(null);
@@ -534,6 +565,8 @@ export function MarkdownStudio() {
     updateSource(nextSource);
     setToast(`Set code language to ${toCodeFenceLanguage(language)}`);
   }
+
+  applyCodeFenceLanguageRef.current = applyCodeFenceLanguage;
 
   async function loadFiles(files: File[]) {
     const acceptedFiles = files.filter(isAcceptedFile);
@@ -1308,6 +1341,8 @@ export function MarkdownStudio() {
     return true;
   }
 
+  openLinkedDocumentRef.current = openLinkedDocument;
+
   function handleTocClick(event: MouseEvent<HTMLAnchorElement>, headingId: string) {
     if (scrollPreviewToHeading(headingId)) event.preventDefault();
   }
@@ -1341,48 +1376,53 @@ export function MarkdownStudio() {
   }
 
   const showPreviewReadPopover = useCallback(() => {
-    const timeout = window.setTimeout(() => {
-      const preview = previewScrollRef.current;
-      const selection = window.getSelection();
+    const preview = previewScrollRef.current;
+    const selection = window.getSelection();
 
-      if (!preview || !selection || selection.rangeCount === 0) {
-        setPreviewReadPopover(null);
-        return;
-      }
+    if (!preview || !selection || selection.rangeCount === 0) {
+      previewReadPopoverKeyRef.current = null;
+      setPreviewReadPopover(null);
+      return;
+    }
 
-      const selectedText = selection.toString().trim();
-      if (!selectedText) {
-        setPreviewReadPopover(null);
-        return;
-      }
+    const selectedText = selection.toString().trim();
+    if (!selectedText) {
+      previewReadPopoverKeyRef.current = null;
+      setPreviewReadPopover(null);
+      return;
+    }
 
-      const range = selection.getRangeAt(0);
+    const range = selection.getRangeAt(0);
 
-      if (!isSelectionInsideElement(range, preview)) {
-        setPreviewReadPopover(null);
-        return;
-      }
+    if (!isSelectionInsideElement(range, preview)) {
+      previewReadPopoverKeyRef.current = null;
+      setPreviewReadPopover(null);
+      return;
+    }
 
-      const speechSelection =
-        getSpeechSelectionFromRange(preview, range) ?? getSpeechSelectionFromSelectedText(preview, selectedText);
-      const position = getSelectionPopoverPosition(range);
+    const speechSelection =
+      getSpeechSelectionFromRange(preview, range) ?? getSpeechSelectionFromSelectedText(preview, selectedText);
+    const position = getSelectionPopoverPosition(range);
+    const nextPopover = {
+      text: speechSelection?.text ?? selectedText,
+      start: speechSelection?.start ?? null,
+      end: speechSelection?.end ?? null,
+      left: position.left,
+      top: position.top,
+    };
+    const nextPopoverKey = getPreviewReadPopoverKey(nextPopover);
 
-      if (!speechSelection) {
-        console.log("Preview selection could not map to readable TTS text:", {
-          selectedText,
-          readableText: collectSpeechTextSegments(preview).text,
-        });
-      }
+    if (nextPopoverKey === previewReadPopoverKeyRef.current) return;
 
-      setPreviewReadPopover({
-        text: speechSelection?.text ?? selectedText,
-        start: speechSelection?.start ?? null,
-        end: speechSelection?.end ?? null,
-        left: position.left,
-        top: position.top,
+    if (!speechSelection) {
+      console.log("Preview selection could not map to readable TTS text:", {
+        selectedText,
+        readableText: collectSpeechTextSegments(preview).text,
       });
-    }, 0);
-    previewSelectionTimeoutRef.current = timeout;
+    }
+
+    previewReadPopoverKeyRef.current = nextPopoverKey;
+    setPreviewReadPopover(nextPopover);
   }, []);
 
   const schedulePreviewReadPopover = useCallback(() => {
@@ -1390,7 +1430,7 @@ export function MarkdownStudio() {
       window.clearTimeout(previewSelectionTimeoutRef.current);
     }
 
-    previewSelectionTimeoutRef.current = window.setTimeout(showPreviewReadPopover, 80);
+    previewSelectionTimeoutRef.current = window.setTimeout(showPreviewReadPopover, 120);
   }, [showPreviewReadPopover]);
 
   const hidePreviewReadPopoverIfSelectionCleared = useCallback(() => {
@@ -1404,14 +1444,14 @@ export function MarkdownStudio() {
       return;
     }
 
-    document.addEventListener("selectionchange", schedulePreviewReadPopover);
     window.addEventListener("mouseup", schedulePreviewReadPopover);
     window.addEventListener("touchend", schedulePreviewReadPopover);
+    window.addEventListener("keyup", schedulePreviewReadPopover);
 
     return () => {
-      document.removeEventListener("selectionchange", schedulePreviewReadPopover);
       window.removeEventListener("mouseup", schedulePreviewReadPopover);
       window.removeEventListener("touchend", schedulePreviewReadPopover);
+      window.removeEventListener("keyup", schedulePreviewReadPopover);
 
       if (previewSelectionTimeoutRef.current !== null) {
         window.clearTimeout(previewSelectionTimeoutRef.current);
@@ -1493,6 +1533,12 @@ export function MarkdownStudio() {
     const nextPercent = ((clientX - rect.left) / rect.width) * 100;
     setSplitPercent(clampSplitPercent(nextPercent));
   }
+
+  const handlePreviewCodeLanguageSelect = useCallback((fenceStartOffset: number, language: string) => {
+    applyCodeFenceLanguageRef.current(fenceStartOffset, language);
+  }, []);
+
+  const handlePreviewLinkClick = useCallback((href: string) => openLinkedDocumentRef.current(href), []);
 
   const wordGoalPercent = wordGoal > 0 ? Math.min((stats.words / wordGoal) * 100, 100) : 0;
   const wordGoalDone = wordGoal > 0 && stats.words >= wordGoal;
@@ -2048,27 +2094,16 @@ export function MarkdownStudio() {
                 </div>
                 <article
                   ref={previewScrollRef}
-                  onMouseUp={schedulePreviewReadPopover}
-                  onTouchEnd={schedulePreviewReadPopover}
                   onScroll={hidePreviewReadPopoverIfSelectionCleared}
                   style={{ fontSize: `${fontSize}px` }}
                   className={cn("markdown-body flex-1 overflow-y-auto p-6", viewMode === "read" && "w-full sm:p-10")}
                 >
-                  {markdownDocument.content.trim() ? (
-                    <MarkdownRenderer
-                      content={source}
-                      onCodeLanguageSelect={applyCodeFenceLanguage}
-                      onLinkClick={openLinkedDocument}
-                    />
-                  ) : (
-                    <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
-                      <div>
-                        <FileText aria-hidden className="mx-auto mb-3 text-[var(--muted-soft)]" size={34} />
-                        <p className="font-bold text-[var(--text)]">Nothing to preview yet</p>
-                        <p className="mt-1">Write or upload markdown to begin.</p>
-                      </div>
-                    </div>
-                  )}
+                  <PreviewContent
+                    hasContent={Boolean(markdownDocument.content.trim())}
+                    source={source}
+                    onCodeLanguageSelect={handlePreviewCodeLanguageSelect}
+                    onLinkClick={handlePreviewLinkClick}
+                  />
                 </article>
               </section>
             ) : null}
@@ -2780,6 +2815,16 @@ function isSelectionInsideElement(range: Range, element: Element): boolean {
     isInsideElement(range.startContainer, element) ||
     isInsideElement(range.endContainer, element)
   );
+}
+
+function getPreviewReadPopoverKey(popover: PreviewReadPopoverState): string {
+  return [
+    popover.text,
+    popover.start ?? "null",
+    popover.end ?? "null",
+    Math.round(popover.left),
+    Math.round(popover.top),
+  ].join("|");
 }
 
 function getSelectionPopoverPosition(range: Range): { left: number; top: number } {
