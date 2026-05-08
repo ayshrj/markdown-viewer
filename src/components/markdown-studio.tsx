@@ -49,40 +49,62 @@ import { useBrowserTts } from "@/hooks/use-browser-tts";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
+import {
+  ACCEPTED_UPLOADS,
+  addLanguageToFence,
+  clampSplitPercent,
+  createDocument,
+  DOCUMENT_DRAG_TYPE,
+  documentMatchesFilename,
+  escapeRegex,
+  type FindMatch,
+  getActiveDocument,
+  getDocumentLabel,
+  getDocumentPageTitle,
+  getFindMatches,
+  getLinkedMarkdownFilename,
+  getLinkHash,
+  getNextUntitledFilename,
+  hasDraggedFiles,
+  isAcceptedFile,
+  isDocumentTabDrag,
+  isEditableWheelTarget,
+  isFindBarTarget,
+  isInsideElement,
+  isThemeMode,
+  isViewMode,
+  normalizeDocumentFilename,
+  normalizeWheelDelta,
+  parseStoredDocuments,
+  reorderDocuments,
+  scrollTextareaSelectionIntoView,
+  type SessionDocument,
+  syncActiveDocumentTitleCookie,
+  THEME_VALUES,
+  VIEW_MODES,
+  type ViewMode,
+} from "@/lib/markdown-studio-documents";
+import {
+  cancelBrowserSpeech,
+  collectSpeechTextSegments,
+  findSegmentForOffset,
+  getFallbackSpeechTextFromSource,
+  getPreviewReadPopoverKey,
+  getSelectionPopoverPosition,
+  getSentenceStartPoint,
+  getSpeechSelectionFromRange,
+  getSpeechSelectionFromSelectedText,
+  isSelectionInsideElement,
+  resolveWordBoundary,
+  type SpeechSentenceSegment,
+  splitTextIntoSentences,
+} from "@/lib/markdown-tts";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
-import { ACTIVE_DOCUMENT_TITLE_COOKIE, SITE_NAME } from "@/lib/site";
 import { cn } from "@/lib/utils";
-import type { ThemeMode } from "@/types/markdown";
-
-type ViewMode = "split" | "edit" | "read";
-
-type SessionDocument = {
-  id: string;
-  source: string;
-  filename?: string;
-  updatedAt: number;
-};
-
-type FindMatch = {
-  start: number;
-  end: number;
-};
 
 type TtsPlaybackState = "idle" | "playing" | "paused";
 type TtsHighlightMode = "sentence" | "word";
 type TtsReadMode = "document" | "selection";
-
-type SpeechTextNodeSegment = {
-  node: Text;
-  start: number;
-  end: number;
-};
-
-type SpeechSentenceSegment = {
-  text: string;
-  start: number;
-  end: number;
-};
 
 type PreviewReadPopoverState = {
   text: string;
@@ -117,17 +139,6 @@ const STORAGE_KEYS = {
   ttsRate: "markdown-reader:tts-rate",
 };
 
-const ACCEPTED_EXTENSIONS = [".md", ".markdown", ".mdx", ".txt"];
-const ACCEPTED_UPLOADS = ACCEPTED_EXTENSIONS.join(",");
-const VIEW_MODES: Array<{ value: ViewMode; label: string }> = [
-  { value: "split", label: "Split" },
-  { value: "edit", label: "Edit" },
-  { value: "read", label: "Read" },
-];
-const THEME_VALUES: ThemeMode[] = ["system", "light", "dark"];
-const MIN_SPLIT_PERCENT = 15;
-const MAX_SPLIT_PERCENT = 85;
-const DOCUMENT_DRAG_TYPE = "application/x-mdlens-document-id";
 const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 22;
 const FONT_SIZE_DEFAULT = 15;
@@ -137,48 +148,6 @@ const TTS_RATE_DEFAULT = 1;
 const TTS_RATE_STEP = 0.1;
 const FIND_DEBOUNCE_MS = 180;
 const TTS_HIGHLIGHT_NAME = "mdlens-tts-current";
-const TTS_READABLE_BLOCK_SELECTOR = "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,summary,dt,dd";
-const TTS_SKIP_SELECTOR = [
-  "script",
-  "style",
-  "noscript",
-  "template",
-  "svg",
-  "canvas",
-  "button",
-  "input",
-  "textarea",
-  "select",
-  "option",
-  "pre",
-  "code",
-  "kbd",
-  "samp",
-  "table",
-  "thead",
-  "tbody",
-  "tfoot",
-  "tr",
-  "th",
-  "td",
-  "math",
-  ".katex",
-  ".katex-display",
-  ".katex-mathml",
-  ".math",
-  ".math-inline",
-  ".math-display",
-  ".mermaid",
-  ".code-block",
-  ".code-toolbar",
-  ".copy-button",
-  ".footnotes",
-  "[aria-hidden='true']",
-  "[hidden]",
-  "[data-footnotes]",
-  "[data-footnote-backref]",
-  "[data-tts-skip='true']",
-].join(",");
 
 const PreviewContent = memo(function PreviewContent({
   hasContent,
@@ -188,10 +157,10 @@ const PreviewContent = memo(function PreviewContent({
 }: PreviewContentProps) {
   if (!hasContent) {
     return (
-      <div className="grid min-h-[320px] place-items-center text-center text-sm text-[var(--muted)]">
+      <div className="text-muted grid min-h-80 place-items-center text-center text-sm">
         <div>
-          <FileText aria-hidden className="mx-auto mb-3 text-[var(--muted-soft)]" size={34} />
-          <p className="font-bold text-[var(--text)]">Nothing to preview yet</p>
+          <FileText aria-hidden className="mx-auto mb-3 text-(--muted-soft)" size={34} />
+          <p className="text-foreground font-bold">Nothing to preview yet</p>
           <p className="mt-1">Write or upload markdown to begin.</p>
         </div>
       </div>
@@ -1581,19 +1550,17 @@ export function MarkdownStudio() {
         </div>
       </div>
 
-      <main
-        className={cn("h-screen overflow-hidden bg-[var(--bg)] p-3 text-[var(--text)] sm:p-6", zenMode && "zen-mode")}
-      >
+      <main className={cn("bg-background text-foreground h-screen overflow-hidden p-3 sm:p-6", zenMode && "zen-mode")}>
         <section
-          className="mx-auto flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-sm sm:h-[calc(100vh-3rem)]"
+          className="mx-auto flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-lg border border-(--line) bg-(--panel) shadow-sm sm:h-[calc(100vh-3rem)]"
           style={{ maxWidth: maxWidth >= 99999 ? "100%" : `${maxWidth}px` }}
         >
           {!zenMode && (
-            <header className="flex items-center gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-3 py-2">
-              <h1 className="mr-1 inline-flex items-center gap-2 text-[0.8rem] font-bold tracking-[0.08em] text-[var(--muted)] uppercase">
+            <header className="flex items-center gap-1 border-b border-(--line) bg-(--panel-muted) px-3 py-2">
+              <h1 className="text-muted mr-1 inline-flex items-center gap-2 text-[0.8rem] font-bold tracking-[0.08em] uppercase">
                 <MDLensIcon
                   aria-hidden
-                  className="mdlens-icon size-5 rounded-[0.35rem]"
+                  className="mdlens-icon size-5 rounded-xl"
                   focusable="false"
                   showSubtitle={false}
                   size={20}
@@ -1604,15 +1571,15 @@ export function MarkdownStudio() {
                 </span>
               </h1>
 
-              <div className="mx-2 h-5 w-px bg-[var(--line)]" />
+              <div className="mx-2 h-5 w-px bg-(--line)" />
 
               <Tabs value={viewMode} onValueChange={value => setViewMode(value as ViewMode)}>
-                <TabsList className="h-auto rounded-lg bg-[var(--panel-sunken)] p-0.5 text-[var(--muted)]">
+                <TabsList className="text-muted h-auto rounded-lg bg-(--panel-sunken) p-0.5">
                   {VIEW_MODES.map(mode => (
                     <TabsTrigger
                       key={mode.value}
                       value={mode.value}
-                      className="rounded-md border border-transparent px-2.5 py-1 text-xs font-bold data-active:border-[var(--line-strong)] data-active:bg-[var(--panel)] data-active:text-[var(--text)] data-active:shadow-none sm:px-3"
+                      className="data-active:text-foreground rounded-md border border-transparent px-2.5 py-1 text-xs font-bold data-active:border-(--line-strong) data-active:bg-(--panel) data-active:shadow-none sm:px-3"
                     >
                       {mode.label}
                     </TabsTrigger>
@@ -1620,7 +1587,7 @@ export function MarkdownStudio() {
                 </TabsList>
               </Tabs>
 
-              <div className="mx-2 hidden h-5 w-px bg-[var(--line)] sm:block" />
+              <div className="mx-2 hidden h-5 w-px bg-(--line) sm:block" />
 
               <div className="hidden items-center gap-0.5 sm:flex">
                 <input
@@ -1638,7 +1605,7 @@ export function MarkdownStudio() {
                 <IconButton icon={Printer} label="Print" onClick={printDocument} />
               </div>
 
-              <div className="mx-2 hidden h-5 w-px bg-[var(--line)] sm:block" />
+              <div className="mx-2 hidden h-5 w-px bg-(--line) sm:block" />
 
               <div className="hidden items-center gap-0.5 sm:flex">
                 <IconButton
@@ -1678,7 +1645,7 @@ export function MarkdownStudio() {
               <div className="hidden items-center gap-0.5 sm:flex">
                 <IconButton icon={RefreshCcw} label="Load sample" onClick={loadSample} />
                 <IconButton icon={Trash2} label="Clear document" onClick={clearDocument} variant="danger" />
-                <div className="mx-2 h-5 w-px bg-[var(--line)]" />
+                <div className="mx-2 h-5 w-px bg-(--line)" />
                 <IconButton
                   icon={zenMode ? Minimize2 : Maximize2}
                   label="Zen mode"
@@ -1712,15 +1679,15 @@ export function MarkdownStudio() {
                   size="icon"
                   onClick={() => setMobileSheetOpen(true)}
                   aria-label="More actions"
-                  className="h-8 w-8 rounded-md bg-transparent text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                  className="text-muted hover:text-foreground h-8 w-8 rounded-md bg-transparent shadow-none transition hover:bg-(--panel-sunken)"
                 >
                   <MoreHorizontal aria-hidden size={15} />
                 </Button>
               </div>
 
               <MobileToolbarSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)}>
-                <div className="flex items-center gap-1 border-b border-[var(--line)] px-4 pt-1 pb-3">
-                  <span className="mr-auto text-xs font-bold tracking-widest text-[var(--muted-soft)] uppercase">
+                <div className="flex items-center gap-1 border-b border-(--line) px-4 pt-1 pb-3">
+                  <span className="mr-auto text-xs font-bold tracking-widest text-(--muted-soft) uppercase">
                     Editor
                   </span>
                   <IconButton
@@ -1763,7 +1730,7 @@ export function MarkdownStudio() {
                   <MobileSheetRow icon={RefreshCcw} label="Load sample" onClick={sheetAction(loadSample)} />
                 </div>
 
-                <div className="border-t border-[var(--line)] py-1">
+                <div className="border-t border-(--line) py-1">
                   <MobileSheetRow
                     icon={Trash2}
                     label="Clear document"
@@ -1778,7 +1745,7 @@ export function MarkdownStudio() {
           )}
 
           {zenMode && (
-            <div className="flex items-center justify-end gap-1 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5">
+            <div className="flex items-center justify-end gap-1 border-b border-(--line) bg-(--panel-muted) px-4 py-1.5">
               <IconButton icon={Volume2} label={ttsPrimaryLabel} onClick={toggleTts} active={isTtsActive} />
               <IconButton
                 icon={ttsHighlightIcon}
@@ -1799,7 +1766,7 @@ export function MarkdownStudio() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setZenMode(false)}
-                className="h-auto gap-1.5 bg-transparent px-2 py-1 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                className="text-muted hover:text-foreground h-auto gap-1.5 bg-transparent px-2 py-1 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
               >
                 <Minimize2 aria-hidden size={12} />
                 Exit Zen
@@ -1807,7 +1774,7 @@ export function MarkdownStudio() {
             </div>
           )}
 
-          <div className="document-strip flex items-center gap-2 border-b border-[var(--line)] bg-[var(--panel)] px-3 py-2">
+          <div className="document-strip flex items-center gap-2 border-b border-(--line) bg-(--panel) px-3 py-2">
             <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto" aria-label="Open markdown documents">
               {documents.map((document, index) => (
                 <div
@@ -1818,14 +1785,14 @@ export function MarkdownStudio() {
                   onDragStart={event => handleDocumentDragStart(event, document.id)}
                   onDrop={event => handleDocumentDrop(event, document.id)}
                   className={cn(
-                    "document-tab group flex max-w-[220px] shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
+                    "document-tab group flex max-w-55 shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
                     document.id === activeDocumentId
-                      ? "border-[var(--line-strong)] bg-[var(--panel-muted)] text-[var(--text)]"
-                      : "border-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-[var(--panel-muted)] hover:text-[var(--text)]",
+                      ? "text-foreground border-(--line-strong) bg-(--panel-muted)"
+                      : "text-muted hover:text-foreground border-transparent hover:border-(--line) hover:bg-(--panel-muted)",
                     document.id === draggedDocumentId && "opacity-50",
                     document.id === dropTargetDocumentId &&
                       document.id !== draggedDocumentId &&
-                      "border-[var(--accent)] bg-[var(--accent-soft)]"
+                      "border-accent bg-(--accent-soft)"
                   )}
                 >
                   <button
@@ -1844,7 +1811,7 @@ export function MarkdownStudio() {
                     type="button"
                     onClick={() => removeDocument(document.id)}
                     draggable={false}
-                    className="rounded px-1.5 py-1.5 text-[var(--muted-soft)] opacity-80 transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100"
+                    className="hover:text-foreground rounded px-1.5 py-1.5 text-(--muted-soft) opacity-80 transition hover:bg-(--panel-sunken) sm:opacity-0 sm:group-hover:opacity-100"
                     aria-label={`Close ${getDocumentLabel(document, index)}`}
                     title="Close document"
                   >
@@ -1868,7 +1835,7 @@ export function MarkdownStudio() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="min-h-8 shrink-0 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                  className="text-muted hover:text-foreground min-h-8 shrink-0 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken)"
                 >
                   <Pencil aria-hidden size={13} />
                   Rename
@@ -1876,16 +1843,16 @@ export function MarkdownStudio() {
               </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+                className="text-foreground w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
               >
                 <form onSubmit={renameActiveDocument} role="dialog" aria-label="Rename active markdown document">
-                  <label className="block font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
+                  <label className="block font-bold tracking-[0.08em] text-(--muted-soft) uppercase">
                     Document name
                   </label>
                   <input
                     value={renameValue}
                     onChange={event => setRenameValue(event.target.value)}
-                    className="mt-2 w-full rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2.5 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                    className="text-foreground focus:border-accent mt-2 w-full rounded-md border border-(--line-strong) bg-(--panel-muted) px-2.5 py-2 text-sm outline-none"
                     autoFocus
                   />
                   <div className="mt-3 flex justify-end gap-2">
@@ -1894,7 +1861,7 @@ export function MarkdownStudio() {
                       variant="outline"
                       size="sm"
                       onClick={() => setRenamePopoverOpen(false)}
-                      className="rounded-md border-[var(--line)] bg-transparent px-2.5 py-1.5 font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                      className="text-muted hover:text-foreground rounded-md border-(--line) bg-transparent px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
                     >
                       Cancel
                     </Button>
@@ -1902,7 +1869,7 @@ export function MarkdownStudio() {
                       type="submit"
                       variant="outline"
                       size="sm"
-                      className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1.5 font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)]"
+                      className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
                     >
                       Save
                     </Button>
@@ -1915,9 +1882,9 @@ export function MarkdownStudio() {
           {findOpen && (
             <div
               data-find-bar="true"
-              className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-2"
+              className="flex flex-wrap items-center gap-2 border-b border-(--line) bg-(--panel-muted) px-4 py-2"
             >
-              <Search aria-hidden size={13} className="shrink-0 text-[var(--muted-soft)]" />
+              <Search aria-hidden size={13} className="shrink-0 text-(--muted-soft)" />
               <input
                 autoFocus
                 value={findInput}
@@ -1925,7 +1892,7 @@ export function MarkdownStudio() {
                 onKeyDown={handleFindKeyDown}
                 placeholder="Find…"
                 aria-label="Find text"
-                className="h-7 min-w-[120px] flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                className="text-foreground focus:border-accent h-7 min-w-30 flex-1 rounded-md border border-(--line-strong) bg-(--panel) px-2.5 text-xs outline-none"
               />
               <input
                 value={replaceQuery}
@@ -1933,9 +1900,9 @@ export function MarkdownStudio() {
                 onKeyDown={handleFindKeyDown}
                 placeholder="Replace with…"
                 aria-label="Replace with"
-                className="h-7 min-w-[120px] flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-2.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                className="text-foreground focus:border-accent h-7 min-w-30 flex-1 rounded-md border border-(--line-strong) bg-(--panel) px-2.5 text-xs outline-none"
               />
-              <span className="shrink-0 text-xs text-[var(--muted-soft)]">
+              <span className="shrink-0 text-xs text-(--muted-soft)">
                 {findInput
                   ? findPending
                     ? "Searching..."
@@ -1947,7 +1914,7 @@ export function MarkdownStudio() {
               {findPending ? (
                 <span
                   aria-hidden
-                  className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[var(--line-strong)] border-t-[var(--accent)]"
+                  className="border-t-accent h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-(--line-strong)"
                 />
               ) : null}
               <Button
@@ -1960,8 +1927,8 @@ export function MarkdownStudio() {
                 className={cn(
                   "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
                   findCaseSensitive
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
-                    : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                    ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
+                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:bg-(--panel-sunken)"
                 )}
               >
                 Aa
@@ -1972,7 +1939,7 @@ export function MarkdownStudio() {
                 size="sm"
                 onClick={() => moveFindSelection(-1)}
                 disabled={findPending || !findMatchCount}
-                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </Button>
@@ -1982,7 +1949,7 @@ export function MarkdownStudio() {
                 size="sm"
                 onClick={() => moveFindSelection(1)}
                 disabled={findPending || !findMatchCount}
-                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </Button>
@@ -1992,7 +1959,7 @@ export function MarkdownStudio() {
                 size="sm"
                 onClick={applyReplace}
                 disabled={findPending || !findQuery.trim() || findMatchCount === 0}
-                className="h-7 shrink-0 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-3 text-xs font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="border-accent text-foreground h-7 shrink-0 rounded-md bg-(--accent-soft) px-3 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Replace all
               </Button>
@@ -2001,7 +1968,7 @@ export function MarkdownStudio() {
                 variant="outline"
                 size="sm"
                 onClick={closeFind}
-                className="h-7 shrink-0 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+                className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
               >
                 Close
               </Button>
@@ -2048,7 +2015,7 @@ export function MarkdownStudio() {
                     : { flex: "1 1 auto", width: "100%" }
                 }
               >
-                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
+                <div className="border-b border-(--line) bg-(--panel-muted) px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-(--muted-soft) uppercase">
                   Source
                 </div>
                 <textarea
@@ -2063,7 +2030,7 @@ export function MarkdownStudio() {
                     whiteSpace: wordWrap ? "pre-wrap" : "pre",
                     overflowX: wordWrap ? "hidden" : "auto",
                   }}
-                  className="min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent p-5 font-mono leading-7 text-[var(--text)] outline-none placeholder:text-[var(--muted-soft)]"
+                  className="text-foreground min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent p-5 font-mono leading-7 outline-none placeholder:text-(--muted-soft)"
                 />
               </section>
             ) : null}
@@ -2093,7 +2060,7 @@ export function MarkdownStudio() {
             {showPreview ? (
               <section
                 className={cn(
-                  "flex min-h-[420px] min-w-0 flex-1 flex-col border-t border-[var(--line)] lg:border-t-0",
+                  "flex min-h-105 min-w-0 flex-1 flex-col border-t border-(--line) lg:border-t-0",
                   viewMode === "read" && "read-scroll-wrap relative"
                 )}
               >
@@ -2109,7 +2076,7 @@ export function MarkdownStudio() {
                     <List aria-hidden size={14} />
                   </button>
                 ) : null}
-                <div className="border-b border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">
+                <div className="border-b border-(--line) bg-(--panel-muted) px-4 py-1.5 text-[0.68rem] font-bold tracking-[0.08em] text-(--muted-soft) uppercase">
                   {previewPending ? "Previewing..." : "Preview"}
                 </div>
                 <article
@@ -2129,7 +2096,7 @@ export function MarkdownStudio() {
             ) : null}
           </div>
 
-          <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--line)] bg-[var(--panel-muted)] px-4 py-1.5 text-[0.7rem] text-[var(--muted-soft)]">
+          <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-(--line) bg-(--panel-muted) px-4 py-1.5 text-[0.7rem] text-(--muted-soft)">
             <span>{stats.words.toLocaleString()} words</span>
             <span>{stats.characters.toLocaleString()} chars</span>
             <span>{lineCount.toLocaleString()} lines</span>
@@ -2155,13 +2122,13 @@ export function MarkdownStudio() {
             {wordGoal > 0 && (
               <span className={cn("flex items-center gap-1.5", wordGoalDone && "text-green-600")}>
                 <span
-                  className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-[var(--line)]"
+                  className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-(--line)"
                   title={`${stats.words} / ${wordGoal} words`}
                 >
                   <span
                     className={cn(
                       "absolute inset-y-0 left-0 rounded-full transition-all",
-                      wordGoalDone ? "bg-green-500" : "bg-[var(--accent)]"
+                      wordGoalDone ? "bg-green-500" : "bg-accent"
                     )}
                     style={{ width: `${wordGoalPercent}%` }}
                   />
@@ -2172,7 +2139,7 @@ export function MarkdownStudio() {
           </footer>
 
           {toast ? (
-            <div className="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] px-4 py-2 text-sm font-bold text-[var(--text)] shadow-sm">
+            <div className="text-foreground pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 rounded-md border border-(--line-strong) bg-(--panel) px-4 py-2 text-sm font-bold shadow-sm">
               {toast}
             </div>
           ) : null}
@@ -2184,11 +2151,11 @@ export function MarkdownStudio() {
             role="dialog"
             aria-label="Read selected preview text"
             onMouseDown={event => event.preventDefault()}
-            className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-1 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-1 text-xs text-[var(--text)] shadow-lg"
+            className="text-foreground fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-1 rounded-lg border border-(--line-strong) bg-(--panel) p-1 text-xs shadow-lg"
             style={{ left: `${previewReadPopover.left}px`, top: `${previewReadPopover.top}px` }}
             title={previewReadPopover.text}
           >
-            <span className="flex items-center gap-1 px-2 font-bold text-[var(--muted)]">
+            <span className="text-muted flex items-center gap-1 px-2 font-bold">
               <Volume2 aria-hidden size={13} />
               Read
             </span>
@@ -2198,7 +2165,7 @@ export function MarkdownStudio() {
               size="sm"
               onClick={() => startTtsFromPreviewSelection("document")}
               disabled={!canReadPreviewSelection}
-              className="h-7 rounded-md border-[var(--line)] bg-transparent px-2.5 text-xs font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-45"
+              className="text-muted hover:text-foreground h-7 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
             >
               Start from here
             </Button>
@@ -2208,7 +2175,7 @@ export function MarkdownStudio() {
               size="sm"
               onClick={() => startTtsFromPreviewSelection("selection")}
               disabled={!canReadPreviewSelection}
-              className="h-7 rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 text-xs font-bold text-[var(--text)] shadow-none hover:bg-[var(--panel-sunken)] disabled:cursor-not-allowed disabled:opacity-45"
+              className="border-accent text-foreground h-7 rounded-md bg-(--accent-soft) px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
             >
               Read selection
             </Button>
@@ -2216,11 +2183,11 @@ export function MarkdownStudio() {
         ) : null}
 
         {isDraggingFiles ? (
-          <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center border-[6px] border-dashed border-[var(--accent)] bg-[var(--bg)]/70 p-6 backdrop-blur-[2px]">
-            <div className="rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] px-5 py-4 text-center shadow-sm">
-              <Upload aria-hidden className="mx-auto mb-2 text-[var(--muted)]" size={24} />
-              <p className="text-sm font-bold text-[var(--text)]">Drop markdown files to add them</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">.md, .markdown, .mdx, and .txt files are accepted.</p>
+          <div className="border-accent pointer-events-none fixed inset-0 z-40 grid place-items-center border-[6px] border-dashed bg-(--bg)/70 p-6 backdrop-blur-[2px]">
+            <div className="rounded-lg border border-(--line-strong) bg-(--panel) px-5 py-4 text-center shadow-sm">
+              <Upload aria-hidden className="text-muted mx-auto mb-2" size={24} />
+              <p className="text-foreground text-sm font-bold">Drop markdown files to add them</p>
+              <p className="text-muted mt-1 text-xs">.md, .markdown, .mdx, and .txt files are accepted.</p>
             </div>
           </div>
         ) : null}
@@ -2254,10 +2221,10 @@ function IconButton({
       className={cn(
         "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
         active
-          ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+          ? "text-accent bg-(--accent-soft)"
           : variant === "danger"
-            ? "text-[var(--muted)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-            : "text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+            ? "text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            : "text-muted hover:text-foreground hover:bg-(--panel-sunken)"
       )}
     >
       <Icon aria-hidden size={15} />
@@ -2291,9 +2258,9 @@ function MobileToolbarSheet({
       <div
         role="dialog"
         aria-label="More actions"
-        className="pb-safe fixed right-0 bottom-0 left-0 z-40 rounded-t-2xl border-t border-[var(--line-strong)] bg-[var(--panel)]"
+        className="pb-safe fixed right-0 bottom-0 left-0 z-40 rounded-t-2xl border-t border-(--line-strong) bg-(--panel)"
       >
-        <div className="mx-auto mt-2.5 mb-3 h-1 w-10 rounded-full bg-[var(--line-strong)]" />
+        <div className="mx-auto mt-2.5 mb-3 h-1 w-10 rounded-full bg-(--line-strong)" />
         {children}
       </div>
     </>
@@ -2318,13 +2285,13 @@ function MobileSheetRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-[var(--panel-sunken)]",
-        active ? "text-[var(--accent)]" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-[var(--text)]"
+        "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-(--panel-sunken)",
+        active ? "text-accent" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-foreground"
       )}
     >
-      <Icon aria-hidden size={18} className="shrink-0 text-[var(--muted)]" />
+      <Icon aria-hidden size={18} className="text-muted shrink-0" />
       {label}
-      {active && <span className="ml-auto text-xs font-bold text-[var(--accent)]">On</span>}
+      {active && <span className="text-accent ml-auto text-xs font-bold">On</span>}
     </button>
   );
 }
@@ -2339,7 +2306,7 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
           type="button"
           variant="outline"
           size="sm"
-          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
         >
           <Type aria-hidden size={13} />
           {fontSize}px
@@ -2347,18 +2314,18 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-52 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        className="text-foreground w-52 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
         role="dialog"
         aria-label="Font size"
       >
-        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Font size</p>
+        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Font size</p>
         <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="icon-sm"
             onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
-            className="h-7 w-7 rounded-md border-[var(--line)] bg-transparent text-sm font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)]"
+            className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
             aria-label="Decrease font size"
           >
             −
@@ -2371,7 +2338,7 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
             onValueChange={([nextFontSize]) => {
               if (typeof nextFontSize === "number") onChange(nextFontSize);
             }}
-            className="flex-1 [&_[data-slot=slider-range]]:bg-[var(--accent)] [&_[data-slot=slider-thumb]]:border-[var(--accent)] [&_[data-slot=slider-thumb]]:bg-[var(--panel)] [&_[data-slot=slider-track]]:bg-[var(--panel-sunken)]"
+            className="**:data-[slot=slider-range]:bg-accent **:data-[slot=slider-thumb]:border-accent flex-1 **:data-[slot=slider-thumb]:bg-(--panel) **:data-[slot=slider-track]:bg-(--panel-sunken)"
             aria-label="Font size slider"
           />
           <Button
@@ -2379,15 +2346,15 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
             variant="outline"
             size="icon-sm"
             onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
-            className="h-7 w-7 rounded-md border-[var(--line)] bg-transparent text-sm font-bold text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)]"
+            className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
             aria-label="Increase font size"
           >
             +
           </Button>
         </div>
-        <div className="mt-2 flex justify-between text-[0.68rem] text-[var(--muted-soft)]">
+        <div className="mt-2 flex justify-between text-[0.68rem] text-(--muted-soft)">
           <span>{FONT_SIZE_MIN}px</span>
-          <span className="font-bold text-[var(--text)]">{fontSize}px</span>
+          <span className="text-foreground font-bold">{fontSize}px</span>
           <span>{FONT_SIZE_MAX}px</span>
         </div>
         <Button
@@ -2395,7 +2362,7 @@ function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (
           variant="outline"
           size="sm"
           onClick={() => onChange(FONT_SIZE_DEFAULT)}
-          className="mt-2 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          className="text-muted hover:text-foreground mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
         >
           Reset to default ({FONT_SIZE_DEFAULT}px)
         </Button>
@@ -2412,7 +2379,7 @@ function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number
           type="button"
           variant="outline"
           size="sm"
-          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
         >
           <Gauge aria-hidden size={13} />
           {formatTtsRate(rate)}
@@ -2420,12 +2387,12 @@ function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-56 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        className="text-foreground w-56 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
         role="dialog"
         aria-label="Text-to-speech speed"
       >
-        <p className="mb-1 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Reading speed</p>
-        <p className="mb-3 text-[0.72rem] text-[var(--muted)]">Applies to the next spoken sentence.</p>
+        <p className="mb-1 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Reading speed</p>
+        <p className="text-muted mb-3 text-[0.72rem]">Applies to the next spoken sentence.</p>
         <Slider
           min={TTS_RATE_MIN}
           max={TTS_RATE_MAX}
@@ -2434,12 +2401,12 @@ function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number
           onValueChange={([nextRate]) => {
             if (typeof nextRate === "number") onChange(clampTtsRate(nextRate));
           }}
-          className="[&_[data-slot=slider-range]]:bg-[var(--accent)] [&_[data-slot=slider-thumb]]:border-[var(--accent)] [&_[data-slot=slider-thumb]]:bg-[var(--panel)] [&_[data-slot=slider-track]]:bg-[var(--panel-sunken)]"
+          className="**:data-[slot=slider-range]:bg-accent **:data-[slot=slider-thumb]:border-accent **:data-[slot=slider-thumb]:bg-(--panel) **:data-[slot=slider-track]:bg-(--panel-sunken)"
           aria-label="Text-to-speech speed slider"
         />
-        <div className="mt-2 flex justify-between text-[0.68rem] text-[var(--muted-soft)]">
+        <div className="mt-2 flex justify-between text-[0.68rem] text-(--muted-soft)">
           <span>{formatTtsRate(TTS_RATE_MIN)}</span>
-          <span className="font-bold text-[var(--text)]">{formatTtsRate(rate)}</span>
+          <span className="text-foreground font-bold">{formatTtsRate(rate)}</span>
           <span>{formatTtsRate(TTS_RATE_MAX)}</span>
         </div>
         <Button
@@ -2447,7 +2414,7 @@ function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number
           variant="outline"
           size="sm"
           onClick={() => onChange(TTS_RATE_DEFAULT)}
-          className="mt-3 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          className="text-muted hover:text-foreground mt-3 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
         >
           Reset to normal ({formatTtsRate(TTS_RATE_DEFAULT)})
         </Button>
@@ -2483,7 +2450,7 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
           type="button"
           variant="outline"
           size="sm"
-          className="min-h-8 gap-1.5 rounded-md border-[var(--line-strong)] bg-transparent px-2.5 text-xs font-bold whitespace-nowrap text-[var(--muted)] shadow-none hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+          className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
         >
           <AlignLeft aria-hidden size={13} />
           Width
@@ -2491,11 +2458,11 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
         role="dialog"
         aria-label="Set content max width"
       >
-        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Max content width</p>
+        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Max content width</p>
         <div className="mb-2 grid grid-cols-2 gap-1.5">
           {PRESETS.map(preset => (
             <Button
@@ -2511,8 +2478,8 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
               className={cn(
                 "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
                 maxWidth === preset.value
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
-                  : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:bg-transparent hover:text-[var(--text)]"
+                  ? "border-accent text-foreground bg-(--accent-soft)"
+                  : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
               )}
             >
               {preset.label}
@@ -2525,13 +2492,13 @@ function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: 
             value={customValue}
             onChange={e => setCustomValue(e.target.value)}
             placeholder="e.g. 960"
-            className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
           />
           <Button
             type="submit"
             variant="outline"
             size="sm"
-            className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)]"
+            className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
           >
             Set
           </Button>
@@ -2577,8 +2544,8 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
           className={cn(
             "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
             wordGoal > 0
-              ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)] hover:bg-[var(--panel-sunken)]"
-              : "border-[var(--line-strong)] bg-transparent text-[var(--muted)] hover:bg-[var(--panel-sunken)] hover:text-[var(--text)]"
+              ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
+              : "text-muted hover:text-foreground border-(--line-strong) bg-transparent hover:bg-(--panel-sunken)"
           )}
         >
           <Target aria-hidden size={13} />
@@ -2587,11 +2554,11 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] p-3 text-xs text-[var(--text)] shadow-lg"
+        className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
         role="dialog"
         aria-label="Set word goal"
       >
-        <p className="mb-2 font-bold tracking-[0.08em] text-[var(--muted-soft)] uppercase">Word goal</p>
+        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Word goal</p>
         <div className="mb-2 grid grid-cols-4 gap-1">
           {QUICK_GOALS.map(g => (
             <Button
@@ -2607,8 +2574,8 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
               className={cn(
                 "rounded-md border py-1 text-center font-bold shadow-none transition",
                 wordGoal === g
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
-                  : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:bg-transparent hover:text-[var(--text)]"
+                  ? "border-accent text-foreground bg-(--accent-soft)"
+                  : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
               )}
             >
               {g}
@@ -2622,13 +2589,13 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
             placeholder="Custom…"
             type="number"
             min={1}
-            className="min-w-0 flex-1 rounded-md border border-[var(--line-strong)] bg-[var(--panel-muted)] px-2 py-1.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
           />
           <Button
             type="submit"
             variant="outline"
             size="sm"
-            className="rounded-md border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 font-bold text-[var(--text)] shadow-none transition hover:bg-[var(--panel-sunken)]"
+            className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
           >
             Set
           </Button>
@@ -2643,7 +2610,7 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
               setInputValue("");
               setOpen(false);
             }}
-            className="mt-2 w-full rounded-md border-[var(--line)] bg-transparent py-1 text-[var(--muted)] shadow-none transition hover:bg-[var(--panel-sunken)] hover:text-[var(--danger)]"
+            className="text-muted mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken) hover:text-(--danger)"
           >
             Clear goal
           </Button>
@@ -2651,405 +2618,6 @@ function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (
       </PopoverContent>
     </Popover>
   );
-}
-
-function createDocument(source: string, filename?: string, stableId?: string, updatedAt = Date.now()): SessionDocument {
-  return {
-    id: stableId ?? `doc-${updatedAt}-${Math.random().toString(36).slice(2, 9)}`,
-    source,
-    filename,
-    updatedAt,
-  };
-}
-
-function getActiveDocument(documents: SessionDocument[], activeDocumentId: string): SessionDocument {
-  return (
-    documents.find(document => document.id === activeDocumentId) ??
-    documents[0] ??
-    createDocument("", "Untitled 1.md", "fallback")
-  );
-}
-
-function getDocumentLabel(document: SessionDocument, index: number): string {
-  if (document.filename?.trim()) return document.filename.trim();
-  return `Draft ${index + 1}`;
-}
-
-function getNextUntitledFilename(documents: SessionDocument[]): string {
-  const usedNumbers = new Set<number>();
-  for (const document of documents) {
-    const match = /^Untitled(?:\s+(\d+))?\.md$/i.exec(document.filename?.trim() ?? "");
-    if (match) usedNumbers.add(match[1] ? Number(match[1]) : 1);
-  }
-  let nextNumber = 1;
-  while (usedNumbers.has(nextNumber)) nextNumber += 1;
-  return `Untitled ${nextNumber}.md`;
-}
-
-function normalizeDocumentFilename(value: string): string {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return "";
-  return isAcceptedMarkdownPath(trimmedValue) ? trimmedValue : `${trimmedValue}.md`;
-}
-
-function addLanguageToFence(source: string, fenceStartOffset: number, language: string): string {
-  const fenceLanguage = toCodeFenceLanguage(language);
-  if (!fenceLanguage || fenceStartOffset < 0 || fenceStartOffset >= source.length) return source;
-
-  const openingLineEnd = source.indexOf("\n", fenceStartOffset);
-  const lineEnd = openingLineEnd === -1 ? source.length : openingLineEnd;
-  const openingLine = source.slice(fenceStartOffset, lineEnd);
-  const match = /^([ \t]*)(`{3,}|~{3,})[ \t]*(.*)$/.exec(openingLine);
-
-  if (!match || match[3].trim()) return source;
-
-  const nextOpeningLine = `${match[1]}${match[2]} ${fenceLanguage}`;
-  return `${source.slice(0, fenceStartOffset)}${nextOpeningLine}${source.slice(lineEnd)}`;
-}
-
-function getDocumentPageTitle(filename: string | undefined): string {
-  return filename ? `${filename} - ${SITE_NAME}` : SITE_NAME;
-}
-
-function syncActiveDocumentTitleCookie(filename: string | undefined) {
-  const baseCookie = `${ACTIVE_DOCUMENT_TITLE_COOKIE}=`;
-  if (!filename) {
-    document.cookie = `${baseCookie}; Max-Age=0; Path=/; SameSite=Lax`;
-    return;
-  }
-
-  document.cookie = `${baseCookie}${encodeURIComponent(
-    filename.slice(0, 140)
-  )}; Max-Age=31536000; Path=/; SameSite=Lax`;
-}
-
-function getFindMatches(query: string, source: string, caseSensitive: boolean): FindMatch[] {
-  if (!query.trim()) return [];
-  try {
-    const regex = new RegExp(escapeRegex(query), caseSensitive ? "g" : "gi");
-    const matches: FindMatch[] = [];
-    for (const match of source.matchAll(regex)) {
-      if (typeof match.index !== "number") continue;
-      matches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-      });
-    }
-    return matches;
-  } catch {
-    return [];
-  }
-}
-
-function scrollTextareaSelectionIntoView(textarea: HTMLTextAreaElement, selectionStart: number) {
-  const lineIndex = textarea.value.slice(0, selectionStart).split("\n").length - 1;
-  const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight) || 24;
-  textarea.scrollTop = Math.max(0, (lineIndex - 3) * lineHeight);
-}
-
-function reorderDocuments(
-  documents: SessionDocument[],
-  sourceDocumentId: string,
-  targetDocumentId: string
-): SessionDocument[] {
-  const sourceIndex = documents.findIndex(d => d.id === sourceDocumentId);
-  const targetIndex = documents.findIndex(d => d.id === targetDocumentId);
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return documents;
-  const nextDocuments = [...documents];
-  const [movedDocument] = nextDocuments.splice(sourceIndex, 1);
-  nextDocuments.splice(targetIndex, 0, movedDocument);
-  return nextDocuments;
-}
-
-function isDocumentTabDrag(event: ReactDragEvent<HTMLElement>): boolean {
-  return Array.from(event.dataTransfer.types).includes(DOCUMENT_DRAG_TYPE);
-}
-
-function documentMatchesFilename(document: SessionDocument, linkedFilename: string): boolean {
-  if (!document.filename) return false;
-  return normalizeFilename(document.filename) === normalizeFilename(linkedFilename);
-}
-
-function getLinkedMarkdownFilename(href: string): string | null {
-  if (
-    href.startsWith("#") ||
-    href.startsWith("mailto:") ||
-    href.startsWith("tel:") ||
-    /^[a-z][a-z\d+.-]*:/i.test(href) ||
-    href.startsWith("//")
-  )
-    return null;
-  const withoutHash = href.split("#", 1)[0];
-  const withoutQuery = withoutHash.split("?", 1)[0];
-  const normalizedPath = withoutQuery.replace(/\\/g, "/");
-  const filename = normalizedPath.split("/").filter(Boolean).at(-1);
-  if (!filename || !isAcceptedMarkdownPath(filename)) return null;
-  return decodePathSegment(filename);
-}
-
-function getLinkHash(href: string): string | null {
-  const hash = href.split("#")[1];
-  if (!hash) return null;
-  return decodePathSegment(hash);
-}
-
-function normalizeFilename(value: string): string {
-  return decodePathSegment(value.split("/").filter(Boolean).at(-1) ?? value)
-    .trim()
-    .toLowerCase();
-}
-
-function decodePathSegment(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function isAcceptedMarkdownPath(path: string): boolean {
-  const normalizedPath = path.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some(extension => normalizedPath.endsWith(extension));
-}
-
-function parseStoredDocuments(value: string | null): SessionDocument[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item): SessionDocument | null => {
-        if (!isStoredDocument(item)) return null;
-        return {
-          id: item.id,
-          source: item.source,
-          filename: item.filename,
-          updatedAt: item.updatedAt,
-        };
-      })
-      .filter((document): document is SessionDocument => document !== null);
-  } catch {
-    return [];
-  }
-}
-
-function isStoredDocument(value: unknown): value is SessionDocument {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<SessionDocument>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.source === "string" &&
-    (candidate.filename === undefined || typeof candidate.filename === "string") &&
-    typeof candidate.updatedAt === "number" &&
-    Number.isFinite(candidate.updatedAt)
-  );
-}
-
-function isAcceptedFile(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some(extension => name.endsWith(extension));
-}
-
-function hasDraggedFiles(event: DragEvent): boolean {
-  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
-}
-
-function isThemeMode(value: unknown): value is ThemeMode {
-  return typeof value === "string" && THEME_VALUES.includes(value as ThemeMode);
-}
-
-function isViewMode(value: unknown): value is ViewMode {
-  return value === "split" || value === "edit" || value === "read";
-}
-
-function normalizeWheelDelta(event: WheelEvent): number {
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight;
-  return event.deltaY;
-}
-
-function isEditableWheelTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
-}
-
-function isFindBarTarget(target: Element | null): boolean {
-  return Boolean(target?.closest("[data-find-bar='true']"));
-}
-
-function isInsideElement(target: EventTarget | null, element: Element | null): boolean {
-  return Boolean(element && target instanceof Node && element.contains(target));
-}
-
-function isSelectionInsideElement(range: Range, element: Element): boolean {
-  return (
-    isInsideElement(range.commonAncestorContainer, element) ||
-    isInsideElement(range.startContainer, element) ||
-    isInsideElement(range.endContainer, element)
-  );
-}
-
-function getPreviewReadPopoverKey(popover: PreviewReadPopoverState): string {
-  return [
-    popover.text,
-    popover.start ?? "null",
-    popover.end ?? "null",
-    Math.round(popover.left),
-    Math.round(popover.top),
-  ].join("|");
-}
-
-function getSelectionPopoverPosition(range: Range): { left: number; top: number } {
-  const rect = Array.from(range.getClientRects()).find(clientRect => clientRect.width > 0 || clientRect.height > 0);
-  const fallbackRect = range.getBoundingClientRect();
-  const targetRect = rect ?? fallbackRect;
-
-  return {
-    left: clampNumber(targetRect.left + targetRect.width / 2, 128, window.innerWidth - 128),
-    top: Math.max(56, targetRect.top - 10),
-  };
-}
-
-function getSpeechSelectionFromRange(
-  root: HTMLElement,
-  range: Range
-): Pick<PreviewReadPopoverState, "text" | "start" | "end"> | null {
-  const { text, segments } = collectSpeechTextSegments(root);
-  let selectionStart: number | null = null;
-  let selectionEnd: number | null = null;
-
-  for (const segment of segments) {
-    const overlap = getTextNodeSelectionOverlap(range, segment.node);
-    if (!overlap) continue;
-
-    const start = segment.start + overlap.start;
-    const end = segment.start + overlap.end;
-
-    if (start >= end) continue;
-
-    selectionStart ??= start;
-    selectionEnd = end;
-  }
-
-  if (selectionStart === null || selectionEnd === null) return null;
-
-  const normalizedSelection = normalizeSpeechSelectionRange(text, selectionStart, selectionEnd);
-  if (!normalizedSelection) return null;
-
-  return {
-    ...normalizedSelection,
-    text: text.slice(normalizedSelection.start, normalizedSelection.end).trim(),
-  };
-}
-
-function getSpeechSelectionFromSelectedText(
-  root: HTMLElement,
-  selectedText: string
-): Pick<PreviewReadPopoverState, "text" | "start" | "end"> | null {
-  const speechText = collectSpeechTextSegments(root).text;
-  const trimmedSelectedText = selectedText.trim();
-  if (!trimmedSelectedText) return null;
-
-  const exactIndex = speechText.indexOf(trimmedSelectedText);
-  const normalizedIndex =
-    exactIndex >= 0 ? exactIndex : findWhitespaceFlexibleTextIndex(speechText, trimmedSelectedText);
-
-  if (normalizedIndex < 0) return null;
-
-  const matchedText =
-    exactIndex >= 0
-      ? trimmedSelectedText
-      : speechText.slice(normalizedIndex).match(new RegExp(buildWhitespaceFlexiblePattern(trimmedSelectedText)))?.[0];
-
-  if (!matchedText) return null;
-
-  const normalizedSelection = normalizeSpeechSelectionRange(
-    speechText,
-    normalizedIndex,
-    normalizedIndex + matchedText.length
-  );
-
-  if (!normalizedSelection) return null;
-
-  return {
-    ...normalizedSelection,
-    text: speechText.slice(normalizedSelection.start, normalizedSelection.end).trim(),
-  };
-}
-
-function findWhitespaceFlexibleTextIndex(text: string, query: string): number {
-  const pattern = buildWhitespaceFlexiblePattern(query);
-  if (!pattern) return -1;
-
-  const match = new RegExp(pattern).exec(text);
-  return match?.index ?? -1;
-}
-
-function buildWhitespaceFlexiblePattern(value: string): string {
-  return value.trim().split(/\s+/).filter(Boolean).map(escapeRegex).join("\\s+");
-}
-
-function getTextNodeSelectionOverlap(range: Range, node: Text): { start: number; end: number } | null {
-  if (!range.intersectsNode(node)) return null;
-
-  const nodeLength = node.textContent?.length ?? 0;
-  const start = range.startContainer === node ? range.startOffset : 0;
-  const end = range.endContainer === node ? range.endOffset : nodeLength;
-
-  return {
-    start: clampNumber(start, 0, nodeLength),
-    end: clampNumber(end, 0, nodeLength),
-  };
-}
-
-function normalizeSpeechSelectionRange(
-  text: string,
-  start: number,
-  end: number
-): { start: number; end: number } | null {
-  let nextStart = clampNumber(start, 0, text.length);
-  let nextEnd = clampNumber(end, nextStart, text.length);
-
-  while (nextStart < nextEnd && /\s/.test(text[nextStart] ?? "")) {
-    nextStart += 1;
-  }
-
-  while (nextEnd > nextStart && /\s/.test(text[nextEnd - 1] ?? "")) {
-    nextEnd -= 1;
-  }
-
-  const firstWord = resolveWordBoundary(text, nextStart);
-  if (firstWord && firstWord.start < nextEnd) {
-    nextStart = firstWord.start;
-  }
-
-  return nextStart < nextEnd ? { start: nextStart, end: nextEnd } : null;
-}
-
-function getSentenceStartPoint(
-  sentences: SpeechSentenceSegment[],
-  startOffset: number
-): { index: number; charOffset: number } | null {
-  const containingSentenceIndex = sentences.findIndex(
-    sentence => startOffset >= sentence.start && startOffset < sentence.end
-  );
-  const index =
-    containingSentenceIndex >= 0
-      ? containingSentenceIndex
-      : sentences.findIndex(sentence => sentence.start >= startOffset);
-
-  if (index < 0) return null;
-
-  const sentence = sentences[index];
-
-  return {
-    index,
-    charOffset: Math.max(0, startOffset - sentence.start),
-  };
-}
-
-function clampSplitPercent(value: number) {
-  return Math.min(Math.max(value, MIN_SPLIT_PERCENT), MAX_SPLIT_PERCENT);
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -3066,191 +2634,4 @@ function formatTtsRate(value: number) {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function collectSpeechTextSegments(root: HTMLElement): { text: string; segments: SpeechTextNodeSegment[] } {
-  const readableBlocks = getSpeechReadableBlocks(root);
-
-  if (!readableBlocks.length) {
-    return collectSpeechTextFromElement(root, null);
-  }
-
-  const segments: SpeechTextNodeSegment[] = [];
-  let text = "";
-
-  for (const block of readableBlocks) {
-    const blockResult = collectSpeechTextFromElement(block, block);
-
-    if (!blockResult.text.trim()) continue;
-
-    if (text.length > 0) text += "\n\n";
-
-    const offset = text.length;
-    text += blockResult.text;
-    segments.push(
-      ...blockResult.segments.map(segment => ({
-        ...segment,
-        start: segment.start + offset,
-        end: segment.end + offset,
-      }))
-    );
-  }
-
-  return { text, segments };
-}
-
-function getSpeechReadableBlocks(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(TTS_READABLE_BLOCK_SELECTOR)).filter(
-    block => !shouldSkipTtsElement(block)
-  );
-}
-
-function collectSpeechTextFromElement(
-  root: HTMLElement,
-  readableBlockRoot: HTMLElement | null
-): { text: string; segments: SpeechTextNodeSegment[] } {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parentElement = node.parentElement;
-
-      if (!parentElement || shouldSkipTtsElement(parentElement)) return NodeFilter.FILTER_REJECT;
-      if (readableBlockRoot && isInsideNestedReadableBlock(readableBlockRoot, parentElement)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const segments: SpeechTextNodeSegment[] = [];
-  let text = "";
-  let currentNode = walker.nextNode();
-
-  while (currentNode) {
-    const node = currentNode as Text;
-    const value = normalizeSpeechTextValue(node.textContent ?? "");
-
-    if (value.length > 0) {
-      segments.push({
-        node,
-        start: text.length,
-        end: text.length + value.length,
-      });
-      text += value;
-    }
-
-    currentNode = walker.nextNode();
-  }
-
-  return {
-    text,
-    segments,
-  };
-}
-
-function shouldSkipTtsElement(element: Element): boolean {
-  return Boolean(element.closest(TTS_SKIP_SELECTOR));
-}
-
-function isInsideNestedReadableBlock(readableBlockRoot: HTMLElement, element: Element): boolean {
-  const nearestReadableBlock = element.closest(TTS_READABLE_BLOCK_SELECTOR);
-  return Boolean(nearestReadableBlock && nearestReadableBlock !== readableBlockRoot);
-}
-
-function normalizeSpeechTextValue(value: string): string {
-  return value.replace(/\u00a0/g, " ");
-}
-
-function getFallbackSpeechTextFromSource(source: string): string {
-  return source
-    .replace(/^---[\s\S]*?---\s*/, " ")
-    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, " ")
-    .replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, " ")
-    .replace(/\$[^$\n]+\$/g, " ")
-    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
-    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
-    .replace(/[`*_~>#-]+/g, " ");
-}
-
-function splitTextIntoSentences(text: string): SpeechSentenceSegment[] {
-  const normalizedText = text.replace(/\u00a0/g, " ");
-  const sentenceRegex = /[^\n.!?।]+(?:[.!?।]+["')\]]*|(?=\n|$))/g;
-  const sentences: SpeechSentenceSegment[] = [];
-
-  for (const match of normalizedText.matchAll(sentenceRegex)) {
-    const rawText = match[0] ?? "";
-    const rawStart = match.index ?? 0;
-
-    const leadingWhitespaceLength = rawText.length - rawText.trimStart().length;
-    const trailingWhitespaceLength = rawText.length - rawText.trimEnd().length;
-    const sentenceText = rawText.trim();
-
-    if (!sentenceText) continue;
-
-    sentences.push({
-      text: sentenceText,
-      start: rawStart + leadingWhitespaceLength,
-      end: rawStart + rawText.length - trailingWhitespaceLength,
-    });
-  }
-
-  return sentences;
-}
-
-function isWordCharacter(value: string): boolean {
-  return /[\p{L}\p{N}'’-]/u.test(value);
-}
-
-function resolveWordBoundary(text: string, charIndex: number): { start: number; end: number } | null {
-  if (!text) return null;
-
-  let index = Math.min(Math.max(charIndex, 0), text.length - 1);
-
-  if (!isWordCharacter(text[index] ?? "")) {
-    let forward = index;
-
-    while (forward < text.length && !isWordCharacter(text[forward] ?? "")) {
-      forward += 1;
-    }
-
-    if (forward < text.length) {
-      index = forward;
-    } else {
-      let backward = index;
-
-      while (backward >= 0 && !isWordCharacter(text[backward] ?? "")) {
-        backward -= 1;
-      }
-
-      if (backward < 0) return null;
-      index = backward;
-    }
-  }
-
-  let start = index;
-
-  while (start > 0 && isWordCharacter(text[start - 1] ?? "")) {
-    start -= 1;
-  }
-
-  let end = index + 1;
-
-  while (end < text.length && isWordCharacter(text[end] ?? "")) {
-    end += 1;
-  }
-
-  return start < end ? { start, end } : null;
-}
-
-function findSegmentForOffset(segments: SpeechTextNodeSegment[], offset: number): SpeechTextNodeSegment | null {
-  return segments.find(segment => offset >= segment.start && offset < segment.end) ?? null;
-}
-
-function cancelBrowserSpeech() {
-  if (typeof window === "undefined" || !window.speechSynthesis) return;
-
-  window.speechSynthesis.cancel();
 }
