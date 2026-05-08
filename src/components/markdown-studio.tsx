@@ -1,13 +1,9 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
 import {
-  AlignLeft,
   Copy,
   Download,
   FilePlus,
-  FileText,
-  Gauge,
   List,
   Maximize2,
   Minimize2,
@@ -15,13 +11,11 @@ import {
   Moon,
   MoreHorizontal,
   Pause,
-  Pencil,
   Play,
   Printer,
   RefreshCcw,
   Search,
   Sun,
-  Target,
   Trash2,
   Type,
   Upload,
@@ -29,24 +23,32 @@ import {
   WrapText,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import type {
-  ChangeEvent,
-  DragEvent as ReactDragEvent,
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent,
-  PointerEvent,
-  SyntheticEvent,
-} from "react";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent, PointerEvent, SyntheticEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import MDLensIcon from "@/components/mdlens-icon";
+import { DocumentTabs } from "@/components/studio/document-tabs";
+import { FindBar } from "@/components/studio/find-bar";
+import { PreviewContent } from "@/components/studio/preview-content";
+import { PreviewReadPopover, type PreviewReadPopoverState } from "@/components/studio/preview-read-popover";
+import { StatusFooter } from "@/components/studio/status-footer";
+import { ButtonTooltip, IconButton, MobileSheetRow, MobileToolbarSheet } from "@/components/studio/studio-controls";
+import {
+  clampTtsRate,
+  FONT_SIZE_DEFAULT,
+  FONT_SIZE_MIN,
+  FontSizePopover,
+  TTS_RATE_DEFAULT,
+  TtsRatePopover,
+  WidthPopover,
+  WordGoalPopover,
+} from "@/components/studio/studio-popovers";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBrowserTts } from "@/hooks/use-browser-tts";
+import { useFindReplace } from "@/hooks/use-find-replace";
 import { useScreenSize } from "@/hooks/use-screen-size";
 import { toCodeFenceLanguage } from "@/lib/code-language";
 import { getDocumentStats, parseMarkdownDocument } from "@/lib/markdown";
@@ -57,12 +59,8 @@ import {
   createDocument,
   DOCUMENT_DRAG_TYPE,
   documentMatchesFilename,
-  escapeRegex,
-  type FindMatch,
   getActiveDocument,
-  getDocumentLabel,
   getDocumentPageTitle,
-  getFindMatches,
   getLinkedMarkdownFilename,
   getLinkHash,
   getNextUntitledFilename,
@@ -70,7 +68,6 @@ import {
   isAcceptedFile,
   isDocumentTabDrag,
   isEditableWheelTarget,
-  isFindBarTarget,
   isInsideElement,
   isThemeMode,
   isViewMode,
@@ -78,7 +75,6 @@ import {
   normalizeWheelDelta,
   parseStoredDocuments,
   reorderDocuments,
-  scrollTextareaSelectionIntoView,
   type SessionDocument,
   syncActiveDocumentTitleCookie,
   THEME_VALUES,
@@ -101,26 +97,11 @@ import {
   splitTextIntoSentences,
 } from "@/lib/markdown-tts";
 import { SAMPLE_MARKDOWN } from "@/lib/sample-markdown";
-import { cn } from "@/lib/utils";
+import { capitalize, cn } from "@/lib/utils";
 
 type TtsPlaybackState = "idle" | "playing" | "paused";
 type TtsHighlightMode = "sentence" | "word";
 type TtsReadMode = "document" | "selection";
-
-type PreviewReadPopoverState = {
-  text: string;
-  start: number | null;
-  end: number | null;
-  left: number;
-  top: number;
-};
-
-type PreviewContentProps = {
-  hasContent: boolean;
-  source: string;
-  onCodeLanguageSelect: (fenceStartOffset: number, language: string) => void;
-  onLinkClick: (href: string) => boolean;
-};
 
 const STORAGE_KEYS = {
   source: "markdown-reader:source",
@@ -140,36 +121,7 @@ const STORAGE_KEYS = {
   ttsRate: "markdown-reader:tts-rate",
 };
 
-const FONT_SIZE_MIN = 11;
-const FONT_SIZE_MAX = 22;
-const FONT_SIZE_DEFAULT = 15;
-const TTS_RATE_MIN = 0.7;
-const TTS_RATE_MAX = 1.8;
-const TTS_RATE_DEFAULT = 1;
-const TTS_RATE_STEP = 0.1;
-const FIND_DEBOUNCE_MS = 180;
 const TTS_HIGHLIGHT_NAME = "mdlens-tts-current";
-
-const PreviewContent = memo(function PreviewContent({
-  hasContent,
-  source,
-  onCodeLanguageSelect,
-  onLinkClick,
-}: PreviewContentProps) {
-  if (!hasContent) {
-    return (
-      <div className="text-muted grid min-h-80 place-items-center text-center text-sm">
-        <div>
-          <FileText aria-hidden className="mx-auto mb-3 text-(--muted-soft)" size={34} />
-          <p className="text-foreground font-bold">Nothing to preview yet</p>
-          <p className="mt-1">Write or upload markdown to begin.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return <MarkdownRenderer content={source} onCodeLanguageSelect={onCodeLanguageSelect} onLinkClick={onLinkClick} />;
-});
 
 export function MarkdownStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -226,14 +178,6 @@ export function MarkdownStudio() {
   const [fontSize, setFontSize] = useState(FONT_SIZE_DEFAULT);
   const [wordGoal, setWordGoal] = useState(0);
   const [zenMode, setZenMode] = useState(false);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findInput, setFindInput] = useState("");
-  const [findQuery, setFindQuery] = useState("");
-  const [findMatches, setFindMatches] = useState<FindMatch[]>([]);
-  const [findSearching, setFindSearching] = useState(false);
-  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
-  const [replaceQuery, setReplaceQuery] = useState("");
-  const [activeFindIndex, setActiveFindIndex] = useState(0);
   const [savedStatus, setSavedStatus] = useState<"saved" | "unsaved">("saved");
   const [ttsPlaybackState, setTtsPlaybackState] = useState<TtsPlaybackState>("idle");
   const [ttsHighlightMode, setTtsHighlightMode] = useState<TtsHighlightMode>("sentence");
@@ -253,9 +197,6 @@ export function MarkdownStudio() {
   const showEditor = viewMode === "split" || viewMode === "edit";
   const showPreview = viewMode === "split" || viewMode === "read";
   const previewPending = source !== deferredSource;
-  const findPending = findOpen && (findSearching || findInput !== findQuery);
-  const findMatchCount = findMatches.length;
-  const activeFindPosition = findMatchCount ? Math.min(activeFindIndex + 1, findMatchCount) : 0;
   const isTtsActive = ttsPlaybackState !== "idle";
   const ttsPrimaryLabel = isTtsActive ? "Stop reading" : "Listen";
   const ttsPauseIcon = ttsPlaybackState === "paused" ? Play : Pause;
@@ -274,6 +215,31 @@ export function MarkdownStudio() {
     hasVoices: hasBrowserTtsVoices,
     isChecking: isCheckingBrowserTts,
   } = useBrowserTts();
+
+  const {
+    activeFindPosition,
+    applyReplace,
+    closeFind,
+    findCaseSensitive,
+    findInput,
+    findMatchCount,
+    findOpen,
+    findPending,
+    handleFindKeyDown,
+    moveFindSelection,
+    replaceQuery,
+    setFindCaseSensitive,
+    setFindInput,
+    setFindOpen,
+    setReplaceQuery,
+  } = useFindReplace({
+    activeDocumentId,
+    setToast,
+    showEditor,
+    source,
+    textareaRef,
+    updateSource,
+  });
 
   const sheetAction = useCallback(
     (fn: () => void) => () => {
@@ -311,66 +277,6 @@ export function MarkdownStudio() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [zenMode]);
-
-  useEffect(() => {
-    if (!findOpen) {
-      setFindSearching(false);
-      return;
-    }
-    if (!findInput.trim()) {
-      setFindQuery("");
-      setFindMatches([]);
-      setFindSearching(false);
-      return;
-    }
-    setFindSearching(true);
-    const timeout = window.setTimeout(() => {
-      setFindQuery(findInput);
-      setFindMatches(getFindMatches(findInput, source, findCaseSensitive));
-      setFindSearching(false);
-    }, FIND_DEBOUNCE_MS);
-    return () => window.clearTimeout(timeout);
-  }, [findCaseSensitive, findInput, findOpen, source]);
-
-  useEffect(() => {
-    setActiveFindIndex(0);
-  }, [activeDocumentId, findQuery]);
-
-  useEffect(() => {
-    if (!findMatchCount) {
-      setActiveFindIndex(0);
-      return;
-    }
-    setActiveFindIndex(index => Math.min(index, findMatchCount - 1));
-  }, [findMatchCount]);
-
-  useEffect(() => {
-    if (!findOpen || !showEditor || !findMatchCount) return;
-    const textarea = textareaRef.current;
-    const match = findMatches[activeFindIndex] ?? findMatches[0];
-    if (!textarea || !match) return;
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(match.start, match.end);
-      scrollTextareaSelectionIntoView(textarea, match.start);
-      if (!isFindBarTarget(document.activeElement)) {
-        textarea.focus({ preventScroll: true });
-      }
-    });
-
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [activeFindIndex, findMatchCount, findMatches, findOpen, showEditor]);
-
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
-        e.preventDefault();
-        setFindOpen(o => !o);
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, []);
 
   useEffect(() => {
     const storedDocuments = parseStoredDocuments(window.localStorage.getItem(STORAGE_KEYS.documents));
@@ -1452,48 +1358,6 @@ export function MarkdownStudio() {
     setTheme(nextTheme);
   }
 
-  function closeFind() {
-    setFindOpen(false);
-    setFindInput("");
-    setFindQuery("");
-    setFindMatches([]);
-    setFindSearching(false);
-    setActiveFindIndex(0);
-  }
-
-  function moveFindSelection(direction: 1 | -1) {
-    if (findPending || !findMatchCount) return;
-    setActiveFindIndex(index => (index + direction + findMatchCount) % findMatchCount);
-  }
-
-  function handleFindKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
-      closeFind();
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      moveFindSelection(event.shiftKey ? -1 : 1);
-    }
-  }
-
-  function applyReplace() {
-    if (findPending || !findQuery.trim()) return;
-    try {
-      const flags = findCaseSensitive ? "g" : "gi";
-      const regex = new RegExp(escapeRegex(findQuery), flags);
-      const nextSource = source.replace(regex, replaceQuery);
-      updateSource(nextSource);
-      setFindQuery("");
-      setFindMatches([]);
-      setFindSearching(true);
-      setActiveFindIndex(0);
-      setToast("Replaced all matches");
-    } catch {
-      setToast("Replace failed");
-    }
-  }
-
   function startResize(event: PointerEvent<HTMLButtonElement>) {
     if (viewMode !== "split" || !splitContainerRef.current) return;
     event.preventDefault();
@@ -1531,7 +1395,7 @@ export function MarkdownStudio() {
   const wordGoalDone = wordGoal > 0 && stats.words >= wordGoal;
 
   return (
-    <TooltipProvider delayDuration={180}>
+    <>
       <style>{`
         @media print {
           body > * { display: none !important; }
@@ -1810,225 +1674,49 @@ export function MarkdownStudio() {
             </div>
           )}
 
-          <div className="document-strip flex items-center gap-2 border-b border-(--line) bg-(--panel) px-3 py-2">
-            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto" aria-label="Open markdown documents">
-              {documents.map((document, index) => (
-                <div
-                  key={document.id}
-                  draggable
-                  onDragEnd={clearDocumentDragState}
-                  onDragOver={event => handleDocumentDragOver(event, document.id)}
-                  onDragStart={event => handleDocumentDragStart(event, document.id)}
-                  onDrop={event => handleDocumentDrop(event, document.id)}
-                  className={cn(
-                    "document-tab group flex max-w-55 shrink-0 cursor-grab items-center rounded-md border text-xs transition active:cursor-grabbing",
-                    document.id === activeDocumentId
-                      ? "text-foreground border-(--line-strong) bg-(--panel-muted)"
-                      : "text-muted hover:text-foreground border-transparent hover:border-(--line) hover:bg-(--panel-muted)",
-                    document.id === draggedDocumentId && "opacity-50",
-                    document.id === dropTargetDocumentId &&
-                      document.id !== draggedDocumentId &&
-                      "border-accent bg-(--accent-soft)"
-                  )}
-                >
-                  <ButtonTooltip label={`Open ${getDocumentLabel(document, index)}`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveDocumentId(document.id);
-                        setRenamePopoverOpen(false);
-                      }}
-                      className="min-w-0 flex-1 truncate px-2.5 py-1.5 text-left"
-                      aria-current={document.id === activeDocumentId ? "page" : undefined}
-                    >
-                      {getDocumentLabel(document, index)}
-                    </button>
-                  </ButtonTooltip>
-                  <ButtonTooltip label={`Close ${getDocumentLabel(document, index)}`}>
-                    <button
-                      type="button"
-                      onClick={() => removeDocument(document.id)}
-                      draggable={false}
-                      className="hover:text-foreground rounded px-1.5 py-1.5 text-(--muted-soft) opacity-80 transition hover:bg-(--panel-sunken) sm:opacity-0 sm:group-hover:opacity-100"
-                      aria-label={`Close ${getDocumentLabel(document, index)}`}
-                    >
-                      ×
-                    </button>
-                  </ButtonTooltip>
-                </div>
-              ))}
-            </div>
-            <Popover
-              open={renamePopoverOpen}
-              onOpenChange={open => {
-                if (open) {
-                  openRenamePopover();
-                  return;
-                }
-                setRenamePopoverOpen(false);
-              }}
-            >
-              <Tooltip>
-                <PopoverTrigger asChild>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-muted hover:text-foreground min-h-8 shrink-0 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken)"
-                    >
-                      <Pencil aria-hidden size={13} />
-                      Rename
-                    </Button>
-                  </TooltipTrigger>
-                </PopoverTrigger>
-                <TooltipContent sideOffset={8}>Rename active document</TooltipContent>
-              </Tooltip>
-              <PopoverContent
-                align="end"
-                className="text-foreground w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
-              >
-                <form onSubmit={renameActiveDocument} role="dialog" aria-label="Rename active markdown document">
-                  <label className="block font-bold tracking-[0.08em] text-(--muted-soft) uppercase">
-                    Document name
-                  </label>
-                  <input
-                    value={renameValue}
-                    onChange={event => setRenameValue(event.target.value)}
-                    className="text-foreground focus:border-accent mt-2 w-full rounded-md border border-(--line-strong) bg-(--panel-muted) px-2.5 py-2 text-sm outline-none"
-                    autoFocus
-                  />
-                  <div className="mt-3 flex justify-end gap-2">
-                    <ButtonTooltip label="Cancel rename">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setRenamePopoverOpen(false)}
-                        className="text-muted hover:text-foreground rounded-md border-(--line) bg-transparent px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
-                      >
-                        Cancel
-                      </Button>
-                    </ButtonTooltip>
-                    <ButtonTooltip label="Save document name">
-                      <Button
-                        type="submit"
-                        variant="outline"
-                        size="sm"
-                        className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 py-1.5 font-bold shadow-none hover:bg-(--panel-sunken)"
-                      >
-                        Save
-                      </Button>
-                    </ButtonTooltip>
-                  </div>
-                </form>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <DocumentTabs
+            documents={documents}
+            activeDocumentId={activeDocumentId}
+            draggedDocumentId={draggedDocumentId}
+            dropTargetDocumentId={dropTargetDocumentId}
+            renamePopoverOpen={renamePopoverOpen}
+            renameValue={renameValue}
+            onActiveDocumentChange={documentId => {
+              setActiveDocumentId(documentId);
+              setRenamePopoverOpen(false);
+            }}
+            onRenamePopoverOpenChange={open => {
+              if (open) {
+                openRenamePopover();
+                return;
+              }
+              setRenamePopoverOpen(false);
+            }}
+            onRenameValueChange={setRenameValue}
+            onRenameSubmit={renameActiveDocument}
+            onRemoveDocument={removeDocument}
+            onDocumentDragStart={handleDocumentDragStart}
+            onDocumentDragOver={handleDocumentDragOver}
+            onDocumentDrop={handleDocumentDrop}
+            onDocumentDragEnd={clearDocumentDragState}
+          />
 
           {findOpen && (
-            <div
-              data-find-bar="true"
-              className="flex flex-wrap items-center gap-2 border-b border-(--line) bg-(--panel-muted) px-4 py-2"
-            >
-              <Search aria-hidden size={13} className="shrink-0 text-(--muted-soft)" />
-              <input
-                autoFocus
-                value={findInput}
-                onChange={e => setFindInput(e.target.value)}
-                onKeyDown={handleFindKeyDown}
-                placeholder="Find…"
-                aria-label="Find text"
-                className="text-foreground focus:border-accent h-7 min-w-30 flex-1 rounded-md border border-(--line-strong) bg-(--panel) px-2.5 text-xs outline-none"
-              />
-              <input
-                value={replaceQuery}
-                onChange={e => setReplaceQuery(e.target.value)}
-                onKeyDown={handleFindKeyDown}
-                placeholder="Replace with…"
-                aria-label="Replace with"
-                className="text-foreground focus:border-accent h-7 min-w-30 flex-1 rounded-md border border-(--line-strong) bg-(--panel) px-2.5 text-xs outline-none"
-              />
-              <span className="shrink-0 text-xs text-(--muted-soft)">
-                {findInput
-                  ? findPending
-                    ? "Searching..."
-                    : findMatchCount
-                      ? `${activeFindPosition} / ${findMatchCount}`
-                      : "No matches"
-                  : ""}
-              </span>
-              {findPending ? (
-                <span
-                  aria-hidden
-                  className="border-t-accent h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-(--line-strong)"
-                />
-              ) : null}
-              <ButtonTooltip label={findCaseSensitive ? "Case-sensitive find" : "Case-insensitive find"}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-pressed={findCaseSensitive}
-                  onClick={() => setFindCaseSensitive(value => !value)}
-                  className={cn(
-                    "h-7 shrink-0 rounded-md px-2.5 text-xs font-bold shadow-none transition",
-                    findCaseSensitive
-                      ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
-                      : "text-muted hover:text-foreground border-(--line) bg-transparent hover:bg-(--panel-sunken)"
-                  )}
-                >
-                  Aa
-                </Button>
-              </ButtonTooltip>
-              <ButtonTooltip label="Previous match">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => moveFindSelection(-1)}
-                  disabled={findPending || !findMatchCount}
-                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Previous
-                </Button>
-              </ButtonTooltip>
-              <ButtonTooltip label="Next match">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => moveFindSelection(1)}
-                  disabled={findPending || !findMatchCount}
-                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Next
-                </Button>
-              </ButtonTooltip>
-              <ButtonTooltip label="Replace every current match">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={applyReplace}
-                  disabled={findPending || !findQuery.trim() || findMatchCount === 0}
-                  className="border-accent text-foreground h-7 shrink-0 rounded-md bg-(--accent-soft) px-3 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Replace all
-                </Button>
-              </ButtonTooltip>
-              <ButtonTooltip label="Close find and replace">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={closeFind}
-                  className="text-muted hover:text-foreground h-7 shrink-0 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none transition hover:bg-(--panel-sunken)"
-                >
-                  Close
-                </Button>
-              </ButtonTooltip>
-            </div>
+            <FindBar
+              findInput={findInput}
+              replaceQuery={replaceQuery}
+              findPending={findPending}
+              findMatchCount={findMatchCount}
+              activeFindPosition={activeFindPosition}
+              findCaseSensitive={findCaseSensitive}
+              onFindInputChange={setFindInput}
+              onReplaceQueryChange={setReplaceQuery}
+              onFindKeyDown={handleFindKeyDown}
+              onCaseSensitiveChange={setFindCaseSensitive}
+              onMoveSelection={moveFindSelection}
+              onReplaceAll={applyReplace}
+              onClose={closeFind}
+            />
           )}
 
           <div
@@ -2154,47 +1842,18 @@ export function MarkdownStudio() {
             ) : null}
           </div>
 
-          <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-(--line) bg-(--panel-muted) px-4 py-1.5 text-[0.7rem] text-(--muted-soft)">
-            <span>{stats.words.toLocaleString()} words</span>
-            <span>{stats.characters.toLocaleString()} chars</span>
-            <span>{lineCount.toLocaleString()} lines</span>
-            <span>~{stats.readingMinutes} min read</span>
-            <span>{documents.length.toLocaleString()} docs open</span>
-            <span className="min-w-0 truncate">{filename ?? "Local draft"}</span>
-
-            <span
-              className={cn(
-                "ml-auto flex items-center gap-1 transition-opacity duration-300",
-                savedStatus === "saved" ? "opacity-60" : "opacity-100"
-              )}
-            >
-              <span
-                className={cn(
-                  "inline-block h-1.5 w-1.5 rounded-full",
-                  savedStatus === "saved" ? "bg-green-500" : "bg-amber-400"
-                )}
-              />
-              {savedStatus === "saved" ? "Saved" : "Unsaved"}
-            </span>
-
-            {wordGoal > 0 && (
-              <span className={cn("flex items-center gap-1.5", wordGoalDone && "text-green-600")}>
-                <span
-                  className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-(--line)"
-                  title={`${stats.words} / ${wordGoal} words`}
-                >
-                  <span
-                    className={cn(
-                      "absolute inset-y-0 left-0 rounded-full transition-all",
-                      wordGoalDone ? "bg-green-500" : "bg-accent"
-                    )}
-                    style={{ width: `${wordGoalPercent}%` }}
-                  />
-                </span>
-                {wordGoalDone ? "Goal reached!" : `${stats.words} / ${wordGoal}`}
-              </span>
-            )}
-          </footer>
+          <StatusFooter
+            words={stats.words}
+            characters={stats.characters}
+            lineCount={lineCount}
+            readingMinutes={stats.readingMinutes}
+            documentCount={documents.length}
+            filename={filename}
+            savedStatus={savedStatus}
+            wordGoal={wordGoal}
+            wordGoalPercent={wordGoalPercent}
+            wordGoalDone={wordGoalDone}
+          />
 
           {toast ? (
             <div className="text-foreground pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 rounded-md border border-(--line-strong) bg-(--panel) px-4 py-2 text-sm font-bold shadow-sm">
@@ -2204,44 +1863,12 @@ export function MarkdownStudio() {
         </section>
 
         {previewReadPopover ? (
-          <div
-            data-preview-read-popover="true"
-            role="dialog"
-            aria-label="Read selected preview text"
-            onMouseDown={event => event.preventDefault()}
-            className="text-foreground fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-1 rounded-lg border border-(--line-strong) bg-(--panel) p-1 text-xs shadow-lg"
-            style={{ left: `${previewReadPopover.left}px`, top: `${previewReadPopover.top}px` }}
-            title={previewReadPopover.text}
-          >
-            <span className="text-muted flex items-center gap-1 px-2 font-bold">
-              <Volume2 aria-hidden size={13} />
-              Read
-            </span>
-            <ButtonTooltip label="Read from the selected text to the end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => startTtsFromPreviewSelection("document")}
-                disabled={!canReadPreviewSelection}
-                className="text-muted hover:text-foreground h-7 rounded-md border-(--line) bg-transparent px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Start from here
-              </Button>
-            </ButtonTooltip>
-            <ButtonTooltip label="Read only the selected text">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => startTtsFromPreviewSelection("selection")}
-                disabled={!canReadPreviewSelection}
-                className="border-accent text-foreground h-7 rounded-md bg-(--accent-soft) px-2.5 text-xs font-bold shadow-none hover:bg-(--panel-sunken) disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Read selection
-              </Button>
-            </ButtonTooltip>
-          </div>
+          <PreviewReadPopover
+            popover={previewReadPopover}
+            canReadSelection={canReadPreviewSelection}
+            onStartFromHere={() => startTtsFromPreviewSelection("document")}
+            onReadSelection={() => startTtsFromPreviewSelection("selection")}
+          />
         ) : null}
 
         {isDraggingFiles ? (
@@ -2254,504 +1881,6 @@ export function MarkdownStudio() {
           </div>
         ) : null}
       </main>
-    </TooltipProvider>
-  );
-}
-
-function IconButton({
-  icon: Icon,
-  label,
-  onClick,
-  active,
-  variant,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  variant?: "default" | "danger";
-}) {
-  return (
-    <ButtonTooltip label={label}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={onClick}
-        aria-label={label}
-        aria-pressed={active}
-        className={cn(
-          "relative h-8 w-8 rounded-md bg-transparent shadow-none transition",
-          active
-            ? "text-accent bg-(--accent-soft)"
-            : variant === "danger"
-              ? "text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-              : "text-muted hover:text-foreground hover:bg-(--panel-sunken)"
-        )}
-      >
-        <Icon aria-hidden size={15} />
-      </Button>
-    </ButtonTooltip>
-  );
-}
-
-function ButtonTooltip({
-  label,
-  children,
-  side = "top",
-}: {
-  label: React.ReactNode;
-  children: React.ReactNode;
-  side?: React.ComponentProps<typeof TooltipContent>["side"];
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side} sideOffset={8}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function MobileToolbarSheet({
-  open,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <>
-      <div className="fixed inset-0 z-30 bg-black/30" onClick={onClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-label="More actions"
-        className="pb-safe fixed right-0 bottom-0 left-0 z-40 rounded-t-2xl border-t border-(--line-strong) bg-(--panel)"
-      >
-        <div className="mx-auto mt-2.5 mb-3 h-1 w-10 rounded-full bg-(--line-strong)" />
-        {children}
-      </div>
     </>
   );
-}
-
-function MobileSheetRow({
-  icon: Icon,
-  label,
-  onClick,
-  active,
-  variant,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  variant?: "danger";
-}) {
-  return (
-    <ButtonTooltip label={label} side="left">
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-          "flex w-full items-center gap-3 px-5 py-3 text-sm font-medium transition active:bg-(--panel-sunken)",
-          active ? "text-accent" : variant === "danger" ? "text-red-600 dark:text-red-400" : "text-foreground"
-        )}
-      >
-        <Icon aria-hidden size={18} className="text-muted shrink-0" />
-        {label}
-        {active && <span className="text-accent ml-auto text-xs font-bold">On</span>}
-      </button>
-    </ButtonTooltip>
-  );
-}
-
-function FontSizePopover({ fontSize, onChange }: { fontSize: number; onChange: (v: number) => void }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-            >
-              <Type aria-hidden size={13} />
-              {fontSize}px
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent sideOffset={8}>Change editor and preview font size</TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        align="end"
-        className="text-foreground w-52 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
-        role="dialog"
-        aria-label="Font size"
-      >
-        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Font size</p>
-        <div className="flex items-center gap-2">
-          <ButtonTooltip label="Decrease font size">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              onClick={() => onChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
-              className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
-              aria-label="Decrease font size"
-            >
-              −
-            </Button>
-          </ButtonTooltip>
-          <Slider
-            min={FONT_SIZE_MIN}
-            max={FONT_SIZE_MAX}
-            step={1}
-            value={[fontSize]}
-            onValueChange={([nextFontSize]) => {
-              if (typeof nextFontSize === "number") onChange(nextFontSize);
-            }}
-            className="**:data-[slot=slider-range]:bg-accent **:data-[slot=slider-thumb]:border-accent flex-1 **:data-[slot=slider-thumb]:bg-(--panel) **:data-[slot=slider-track]:bg-(--panel-sunken)"
-            aria-label="Font size slider"
-          />
-          <ButtonTooltip label="Increase font size">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              onClick={() => onChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
-              className="text-muted h-7 w-7 rounded-md border-(--line) bg-transparent text-sm font-bold shadow-none hover:bg-(--panel-sunken)"
-              aria-label="Increase font size"
-            >
-              +
-            </Button>
-          </ButtonTooltip>
-        </div>
-        <div className="mt-2 flex justify-between text-[0.68rem] text-(--muted-soft)">
-          <span>{FONT_SIZE_MIN}px</span>
-          <span className="text-foreground font-bold">{fontSize}px</span>
-          <span>{FONT_SIZE_MAX}px</span>
-        </div>
-        <ButtonTooltip label="Reset font size to default">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onChange(FONT_SIZE_DEFAULT)}
-            className="text-muted hover:text-foreground mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
-          >
-            Reset to default ({FONT_SIZE_DEFAULT}px)
-          </Button>
-        </ButtonTooltip>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function TtsRatePopover({ rate, onChange }: { rate: number; onChange: (v: number) => void }) {
-  return (
-    <Popover>
-      <Tooltip>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-            >
-              <Gauge aria-hidden size={13} />
-              {formatTtsRate(rate)}
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent sideOffset={8}>Adjust reading speed</TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        align="end"
-        className="text-foreground w-56 rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
-        role="dialog"
-        aria-label="Text-to-speech speed"
-      >
-        <p className="mb-1 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Reading speed</p>
-        <p className="text-muted mb-3 text-[0.72rem]">Applies to the next spoken sentence.</p>
-        <Slider
-          min={TTS_RATE_MIN}
-          max={TTS_RATE_MAX}
-          step={TTS_RATE_STEP}
-          value={[rate]}
-          onValueChange={([nextRate]) => {
-            if (typeof nextRate === "number") onChange(clampTtsRate(nextRate));
-          }}
-          className="**:data-[slot=slider-range]:bg-accent **:data-[slot=slider-thumb]:border-accent **:data-[slot=slider-thumb]:bg-(--panel) **:data-[slot=slider-track]:bg-(--panel-sunken)"
-          aria-label="Text-to-speech speed slider"
-        />
-        <div className="mt-2 flex justify-between text-[0.68rem] text-(--muted-soft)">
-          <span>{formatTtsRate(TTS_RATE_MIN)}</span>
-          <span className="text-foreground font-bold">{formatTtsRate(rate)}</span>
-          <span>{formatTtsRate(TTS_RATE_MAX)}</span>
-        </div>
-        <ButtonTooltip label="Reset reading speed to normal">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onChange(TTS_RATE_DEFAULT)}
-            className="text-muted hover:text-foreground mt-3 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken)"
-          >
-            Reset to normal ({formatTtsRate(TTS_RATE_DEFAULT)})
-          </Button>
-        </ButtonTooltip>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function WidthPopover({ maxWidth, onChange }: { maxWidth: number; onChange: (v: number) => void }) {
-  const [open, setOpen] = useState(false);
-  const [customValue, setCustomValue] = useState(String(maxWidth));
-
-  const PRESETS = [
-    { label: "640", value: 640 },
-    { label: "800", value: 800 },
-    { label: "1180", value: 1180 },
-    { label: "Full", value: 99999 },
-  ];
-
-  function applyCustom(e: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
-    e.preventDefault();
-    const num = parseInt(customValue.trim());
-    if (Number.isFinite(num) && num > 0) {
-      onChange(num);
-      setOpen(false);
-    }
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-muted hover:text-foreground min-h-8 gap-1.5 rounded-md border-(--line-strong) bg-transparent px-2.5 text-xs font-bold whitespace-nowrap shadow-none hover:bg-(--panel-sunken)"
-            >
-              <AlignLeft aria-hidden size={13} />
-              Width
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent sideOffset={8}>Set content max width</TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        align="end"
-        className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
-        role="dialog"
-        aria-label="Set content max width"
-      >
-        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Max content width</p>
-        <div className="mb-2 grid grid-cols-2 gap-1.5">
-          {PRESETS.map(preset => (
-            <ButtonTooltip key={preset.value} label={`Set max width to ${preset.label}`}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onChange(preset.value);
-                  setCustomValue(preset.value >= 99999 ? "full" : String(preset.value));
-                  setOpen(false);
-                }}
-                className={cn(
-                  "rounded-md border px-2 py-1.5 text-center font-bold shadow-none transition",
-                  maxWidth === preset.value
-                    ? "border-accent text-foreground bg-(--accent-soft)"
-                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
-                )}
-              >
-                {preset.label}
-                {preset.value === 1180 && <span className="ml-1 font-normal opacity-50">default</span>}
-              </Button>
-            </ButtonTooltip>
-          ))}
-        </div>
-        <form onSubmit={applyCustom} className="flex gap-1.5">
-          <input
-            value={customValue}
-            onChange={e => setCustomValue(e.target.value)}
-            placeholder="e.g. 960"
-            className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
-          />
-          <ButtonTooltip label="Apply custom width">
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
-            >
-              Set
-            </Button>
-          </ButtonTooltip>
-        </form>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function WordGoalPopover({ wordGoal, onChange }: { wordGoal: number; onChange: (v: number) => void }) {
-  const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState(wordGoal > 0 ? String(wordGoal) : "");
-
-  function handleSubmit(e: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
-    e.preventDefault();
-    const num = parseInt(inputValue.trim());
-    if (!inputValue.trim() || num <= 0) {
-      onChange(0);
-      setOpen(false);
-      return;
-    }
-    if (Number.isFinite(num) && num > 0) {
-      onChange(num);
-      setOpen(false);
-    }
-  }
-
-  const QUICK_GOALS = [100, 250, 500, 1000];
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={nextOpen => {
-        if (nextOpen) setInputValue(wordGoal > 0 ? String(wordGoal) : "");
-        setOpen(nextOpen);
-      }}
-    >
-      <Tooltip>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                "min-h-8 gap-1.5 rounded-md border px-2.5 text-xs font-bold whitespace-nowrap shadow-none transition",
-                wordGoal > 0
-                  ? "border-accent text-foreground bg-(--accent-soft) hover:bg-(--panel-sunken)"
-                  : "text-muted hover:text-foreground border-(--line-strong) bg-transparent hover:bg-(--panel-sunken)"
-              )}
-            >
-              <Target aria-hidden size={13} />
-              Goal
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent sideOffset={8}>Set writing word goal</TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        align="end"
-        className="text-foreground w-[min(14rem,calc(100vw-2rem))] rounded-lg border border-(--line-strong) bg-(--panel) p-3 text-xs shadow-lg"
-        role="dialog"
-        aria-label="Set word goal"
-      >
-        <p className="mb-2 font-bold tracking-[0.08em] text-(--muted-soft) uppercase">Word goal</p>
-        <div className="mb-2 grid grid-cols-4 gap-1">
-          {QUICK_GOALS.map(g => (
-            <ButtonTooltip key={g} label={`Set word goal to ${g}`}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onChange(g);
-                  setInputValue(String(g));
-                  setOpen(false);
-                }}
-                className={cn(
-                  "rounded-md border py-1 text-center font-bold shadow-none transition",
-                  wordGoal === g
-                    ? "border-accent text-foreground bg-(--accent-soft)"
-                    : "text-muted hover:text-foreground border-(--line) bg-transparent hover:border-(--line-strong) hover:bg-transparent"
-                )}
-              >
-                {g}
-              </Button>
-            </ButtonTooltip>
-          ))}
-        </div>
-        <form onSubmit={handleSubmit} className="flex gap-1.5">
-          <input
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            placeholder="Custom…"
-            type="number"
-            min={1}
-            className="text-foreground focus:border-accent min-w-0 flex-1 rounded-md border border-(--line-strong) bg-(--panel-muted) px-2 py-1.5 text-sm outline-none"
-          />
-          <ButtonTooltip label="Apply custom word goal">
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              className="border-accent text-foreground rounded-md bg-(--accent-soft) px-2.5 font-bold shadow-none transition hover:bg-(--panel-sunken)"
-            >
-              Set
-            </Button>
-          </ButtonTooltip>
-        </form>
-        {wordGoal > 0 && (
-          <ButtonTooltip label="Clear word goal">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onChange(0);
-                setInputValue("");
-                setOpen(false);
-              }}
-              className="text-muted mt-2 w-full rounded-md border-(--line) bg-transparent py-1 shadow-none transition hover:bg-(--panel-sunken) hover:text-(--danger)"
-            >
-              Clear goal
-            </Button>
-          </ButtonTooltip>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function clampTtsRate(value: number) {
-  return clampNumber(Number(value.toFixed(1)), TTS_RATE_MIN, TTS_RATE_MAX);
-}
-
-function formatTtsRate(value: number) {
-  return `${value.toFixed(1)}x`;
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }

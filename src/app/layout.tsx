@@ -90,7 +90,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
-        <TooltipProvider>
+        <TooltipProvider delayDuration={180}>
           <ThemeProvider>{children}</ThemeProvider>
         </TooltipProvider>
       </body>
