@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useId, useState } from "react";
 
 import { CopyButton } from "@/components/copy-button";
+import { ZoomableContainer } from "@/components/zoomable-container";
 
 type MermaidBlockProps = {
   code: string;
@@ -81,7 +82,16 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
           </div>
         </div>
       ) : svg ? (
-        <div className="mermaid overflow-x-auto p-4" dangerouslySetInnerHTML={{ __html: svg }} />
+        <ZoomableContainer
+          modalTitle="Mermaid Diagram"
+          modalContent={
+            <div className="flex h-full min-h-0 items-center justify-center p-6">
+              <div className="mermaid" dangerouslySetInnerHTML={{ __html: svg }} />
+            </div>
+          }
+        >
+          <div className="mermaid p-4" dangerouslySetInnerHTML={{ __html: svg }} />
+        </ZoomableContainer>
       ) : (
         <div className="p-4 text-sm text-[var(--muted)]">Rendering diagram...</div>
       )}

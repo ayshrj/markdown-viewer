@@ -20,6 +20,7 @@ import { visit } from "unist-util-visit";
 
 import { HighlightedCode } from "@/components/highlighted-code";
 import { MermaidBlock } from "@/components/mermaid-block";
+import { ZoomableContainer } from "@/components/zoomable-container";
 
 type MarkdownRendererProps = {
   content: string;
@@ -341,14 +342,24 @@ function createComponents(
 
       if (!safeSrc) return null;
 
-      const image = <img alt={alt ?? ""} loading="lazy" src={safeSrc} title={title} />;
-
-      if (!title) return image;
-
       return (
         <span className="image-figure" role="figure">
-          {image}
-          <span className="image-caption">{title}</span>
+          <ZoomableContainer
+            as="span"
+            modalTitle={alt || title || "Image"}
+            modalContent={
+              <div className="flex h-full min-h-0 items-center justify-center p-4">
+                <img
+                  alt={alt ?? ""}
+                  src={safeSrc}
+                  style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                />
+              </div>
+            }
+          >
+            <img alt={alt ?? ""} loading="lazy" src={safeSrc} title={title} />
+          </ZoomableContainer>
+          {title && <span className="image-caption">{title}</span>}
         </span>
       );
     },
