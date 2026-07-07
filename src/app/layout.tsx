@@ -3,6 +3,7 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 
+import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -91,7 +92,9 @@ export default function RootLayout({
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
         <TooltipProvider delayDuration={180}>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </ThemeProvider>
         </TooltipProvider>
       </body>
     </html>

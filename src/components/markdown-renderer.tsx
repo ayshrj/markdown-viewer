@@ -19,6 +19,7 @@ import type { Node } from "unist";
 import { visit } from "unist-util-visit";
 
 import { HighlightedCode } from "@/components/highlighted-code";
+import { LinkPreviewCard } from "@/components/link-preview-card";
 import { MermaidBlock } from "@/components/mermaid-block";
 import { ZoomableContainer } from "@/components/zoomable-container";
 
@@ -64,6 +65,15 @@ const GITHUB_ALERT_MAP: Record<string, string> = {
 
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function isExternalHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function isSafeUrl(value?: string) {
@@ -290,6 +300,21 @@ function createComponents(
 
       if (!safeHref) {
         return <span className={className}>{children}</span>;
+      }
+
+      if (isExternalHttpUrl(safeHref)) {
+        return (
+          <LinkPreviewCard
+            href={safeHref}
+            className={className}
+            onClick={handleClick}
+            rel={rel}
+            target={target}
+            title={title}
+          >
+            {children}
+          </LinkPreviewCard>
+        );
       }
 
       return (
